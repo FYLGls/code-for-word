@@ -1,50 +1,86 @@
 /**
  * Clipboard client:
- * 1) Prefer local Windows host
- * 2) Fallback browser APIs
+ * - Desktop / local http: prefer Windows RTF host
+ * - Public https (GitHub Pages): browser clipboard only (never call localhost)
  */
 
 const HOST = `http://127.0.0.1:${import.meta.env?.VITE_CLIP_PORT || 5199}`
 
-/**
- * Word path: RTF + plain via host (no HTML).
- * @param {{ rtf: string, html: string, plain: string }} payload
- */
-export async function writeClipboard(payload) {
+function canUseClipboardHost() {
+  if (typeof window === 'undefined') return false
+  if (window.codepasteDesktop?.isDesktop) return true
+  const { protocol, hostname } = window.location
+  if (protocol === 'http:' && (hostname === '127.0.0.1' || hostname === 'localhost')) {
+    return true
+  }
+  return false
+}
+
+async function postHost(body, timeoutMs = 800) {
+  if (!canUseClipboardHost()) return null
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     const res = await fetch(`${HOST}/clipboard`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        rtf: payload.rtf,
-        plain: payload.plain,
-        mode: 'rtf'
-      })
+      body: JSON.stringify(body),
+      signal: ctrl.signal
     })
-    if (res.ok) {
-      const data = await res.json()
-      if (data.ok) return { via: 'native-rtf', detail: data }
-    }
+    if (!res.ok) return null
+    const data = await res.json()
+    return data?.ok ? data : null
   } catch {
-    /* host offline */
+    return null
+  } finally {
+    clearTimeout(timer)
   }
+}
+
+/**
+ * Word path: RTF via host when available; otherwise HTML for the browser.
+ * @param {{ rtf: string, html: string, plain: string }} payload
+ */
+export async function writeClipboard(payload) {
+  const host = await postHost({
+    rtf: payload.rtf,
+    plain: payload.plain,
+    mode: 'rtf'
+  })
+  if (host) return { via: 'native-rtf', detail: host }
 
   const wrapped =
     `<!DOCTYPE html><html><head><meta charset="utf-8"></head>` +
     `<body><!--StartFragment-->${payload.html}<!--EndFragment--></body></html>`
 
-  if (navigator.clipboard?.write && window.ClipboardItem) {
-    await navigator.clipboard.write([
-      new ClipboardItem({
-        'text/html': new Blob([wrapped], { type: 'text/html' }),
-        'text/plain': new Blob([payload.plain], { type: 'text/plain' })
-      })
-    ])
-    return { via: 'browser-html' }
+  // Prefer execCommand during the click gesture — more reliable for text/html → Word
+  try {
+    await writeViaCopyEvent(wrapped, payload.plain, '')
+    return { via: 'execCommand' }
+  } catch {
+    /* fall through */
   }
 
-  await writeViaCopyEvent(wrapped, payload.plain, payload.rtf)
-  return { via: 'execCommand' }
+  if (navigator.clipboard?.write && window.ClipboardItem) {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([wrapped], { type: 'text/html' }),
+          'text/plain': new Blob([payload.plain], { type: 'text/plain' })
+        })
+      ])
+      return { via: 'browser-html' }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(payload.plain)
+    return { via: 'browser-text' }
+  }
+
+  throw new Error('copy failed')
 }
 
 /**
@@ -52,22 +88,11 @@ export async function writeClipboard(payload) {
  * @param {{ plain: string }} payload
  */
 export async function writePlainClipboard(payload) {
-  try {
-    const res = await fetch(`${HOST}/clipboard`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        plain: payload.plain,
-        mode: 'plain'
-      })
-    })
-    if (res.ok) {
-      const data = await res.json()
-      if (data.ok) return { via: 'native-plain', detail: data }
-    }
-  } catch {
-    /* host offline */
-  }
+  const host = await postHost({
+    plain: payload.plain,
+    mode: 'plain'
+  })
+  if (host) return { via: 'native-plain', detail: host }
 
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(payload.plain)
@@ -81,18 +106,23 @@ export async function writePlainClipboard(payload) {
 function writeViaCopyEvent(html, plain, rtf) {
   return new Promise((resolve, reject) => {
     const onCopy = (e) => {
-      if (html) e.clipboardData.setData('text/html', html)
-      e.clipboardData.setData('text/plain', plain)
       try {
+        if (html) e.clipboardData.setData('text/html', html)
+        e.clipboardData.setData('text/plain', plain)
         if (rtf) e.clipboardData.setData('text/rtf', rtf)
-      } catch {
-        /* chrome may block */
+        e.preventDefault()
+      } catch (err) {
+        reject(err)
+        return
       }
-      e.preventDefault()
     }
     document.addEventListener('copy', onCopy)
-    const ok = document.execCommand('copy')
-    document.removeEventListener('copy', onCopy)
+    let ok = false
+    try {
+      ok = document.execCommand('copy')
+    } finally {
+      document.removeEventListener('copy', onCopy)
+    }
     if (ok) resolve()
     else reject(new Error('copy failed'))
   })
@@ -109,10 +139,15 @@ export function downloadBlob(blob, filename) {
 }
 
 export async function clipboardHostReady() {
+  if (!canUseClipboardHost()) return false
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 600)
   try {
-    const res = await fetch(`${HOST}/health`, { method: 'GET' })
+    const res = await fetch(`${HOST}/health`, { method: 'GET', signal: ctrl.signal })
     return res.ok
   } catch {
     return false
+  } finally {
+    clearTimeout(timer)
   }
 }

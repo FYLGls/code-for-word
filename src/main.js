@@ -584,7 +584,11 @@ async function copyToWord() {
   try {
     const result = await writeClipboard({ rtf, html, plain: els.source.value })
     if (result.via === 'native-rtf') setStatus(t('statusCopied'), 'ok')
-    else if (result.via === 'browser-html' || result.via === 'execCommand') {
+    else if (
+      result.via === 'browser-html' ||
+      result.via === 'execCommand' ||
+      result.via === 'browser-text'
+    ) {
       setStatus(t('statusCopyWeb'), 'ok')
     } else setStatus(t('statusCopyFallback'), 'err')
   } catch (err) {
