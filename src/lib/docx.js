@@ -272,60 +272,31 @@ export async function linesToDocxBlob(lines, options) {
   }))
 
   /** @type {InstanceType<typeof Paragraph>[]} */
-  let codeParas
-  if (frame === 'box' || frame === 'rails' || capLines.length) {
-    // One cell, soft line breaks — table draws the continuous frame.
+  // One paragraph per line (hard Enter). Soft breaks show as ↓ in Word.
+  const codeParas = (rows.length ? rows : [[]]).map((row, i) => {
     /** @type {InstanceType<typeof TextRun>[]} */
-    const boxRuns = []
-    rows.forEach((row, i) => {
-      if (i > 0) boxRuns.push(new TextRun({ break: 1 }))
-      if (options.lineNumbers) {
-        boxRuns.push(new TextRun({
-          text: `${i + 1}${suffix}  `,
-          font: fontName,
-          size: fontSize,
-          color: lnColor,
-          bold: !!options.forceBold,
-          italics: !!options.forceItalic,
-          noProof: true
-        }))
-      }
-      boxRuns.push(...codeRuns(row))
+    const runs = []
+    if (options.lineNumbers) {
+      runs.push(new TextRun({
+        text: `${i + 1}${suffix}  `,
+        font: fontName,
+        size: fontSize,
+        color: lnColor,
+        bold: !!options.forceBold,
+        italics: !!options.forceItalic,
+        noProof: true
+      }))
+    }
+    runs.push(...codeRuns(row))
+    return new Paragraph({
+      alignment: AlignmentType.LEFT,
+      spacing,
+      shading,
+      children: runs.length
+        ? runs
+        : [new TextRun({ text: ' ', font: fontName, size: fontSize, noProof: true })]
     })
-    codeParas = [
-      new Paragraph({
-        alignment: AlignmentType.LEFT,
-        spacing,
-        shading,
-        children: boxRuns.length
-          ? boxRuns
-          : [new TextRun({ text: ' ', font: fontName, size: fontSize, noProof: true })]
-      })
-    ]
-  } else {
-    codeParas = rows.map((row, i) => {
-      /** @type {InstanceType<typeof TextRun>[]} */
-      const runs = []
-      if (options.lineNumbers) {
-        runs.push(new TextRun({
-          text: `${i + 1}${suffix}  `,
-          font: fontName,
-          size: fontSize,
-          color: lnColor,
-          bold: !!options.forceBold,
-          italics: !!options.forceItalic,
-          noProof: true
-        }))
-      }
-      runs.push(...codeRuns(row))
-      return new Paragraph({
-        alignment: AlignmentType.LEFT,
-        spacing,
-        shading,
-        children: runs
-      })
-    })
-  }
+  })
 
   const page = pageSetup
   const tableWidth = page.contentWidth

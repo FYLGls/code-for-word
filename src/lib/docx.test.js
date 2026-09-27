@@ -54,4 +54,23 @@ describe('DOCX exporter', () => {
     expect(xml).toMatch(/w:pgMar[^>]*w:right="1134"/)
     expect(xml).toMatch(/w:pgSz[^>]*w:w="11906"/)
   })
+
+  it('emits hard paragraph breaks (no soft w:br) for multi-line code', async () => {
+    const blob = await linesToDocxBlob(
+      [
+        [{ text: 'a', color: '#000000' }],
+        [{ text: 'b', color: '#000000' }],
+        [{ text: 'c', color: '#000000' }]
+      ],
+      {
+        background: '#FFFFFF',
+        foreground: '#000000',
+        frameStyle: 'box',
+        lineNumbers: false
+      }
+    )
+    const xml = await docXml(blob)
+    expect(xml).not.toMatch(/<w:br\b/)
+    expect((xml.match(/<w:p[\s>]/g) || []).length).toBeGreaterThanOrEqual(3)
+  })
 })

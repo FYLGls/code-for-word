@@ -122,22 +122,6 @@ function captionBorders(frame, ac, isFirst) {
 }
 
 /**
- * Code-block borders when a caption sits above (no top edge for box — caption owns it).
- * @param {import('./frame.js').FrameStyle} frame
- * @param {number} ac
- * @param {boolean} hasCaption
- */
-function codeBlockBorders(frame, ac, hasCaption) {
-  const s = `\\brdrs\\brdrw40\\brdrcf${ac}`
-  if (frame === 'box') {
-    const top = hasCaption ? '' : `\\brdrt${s}`
-    return `${top}\\brdrl${s}\\brdrr${s}\\brdrb${s}`
-  }
-  if (frame === 'rails') return `\\brdrl${s}\\brdrr${s}`
-  return `\\brdrl${s}`
-}
-
-/**
  * @param {import('../themes.js').StyledRun[][]} lines
  * @param {{
  *  background: string,
@@ -257,29 +241,17 @@ export function linesToRtf(lines, options) {
     }).join('')
   }
 
-  let body
-  if (frame === 'box') {
-    // Single paragraph + \\line. Caption paras sit above with shared side borders.
-    const boxBorders = codeBlockBorders(frame, ac, !!capLines.length)
-    const head =
+  let body = rows.map((row, i) => {
+    const borders = rtfParaBorders(frame, ac, i, rows.length, !!capLines.length)
+    const content =
       `\\pard\\plain\\ql\\f0\\fs${fontSizeHalfPoints}` +
-      `${shade}\\cf${fg}${boxBorders}` +
+      `${shade}\\cf${fg}` +
+      borders +
       `\\hyphpar0\\nowidctlpar\\noproof` +
-      `\\li${left}\\ri${right}\\sa0\\sb0${linePart}`
-    const inner = rows.map((row, i) => lineContent(row, i)).join('\\line\n')
-    body = `${head}${inner}\\par`
-  } else {
-    body = rows.map((row, i) => {
-      const content =
-        `\\pard\\plain\\ql\\f0\\fs${fontSizeHalfPoints}` +
-        `${shade}\\cf${fg}` +
-        rtfParaBorders(frame, ac, i, rows.length) +
-        `\\hyphpar0\\nowidctlpar\\noproof` +
-        `\\li${left}\\ri${right}\\sa0\\sb0${linePart}` +
-        lineContent(row, i)
-      return `${content}\\par`
-    }).join('\n')
-  }
+      `\\li${left}\\ri${right}\\sa0\\sb0${linePart}` +
+      lineContent(row, i)
+    return `${content}\\par`
+  }).join('\n')
 
   return [
     '{\\rtf1\\ansi\\ansicpg1252\\deff0\\nouicompat\\uc1',

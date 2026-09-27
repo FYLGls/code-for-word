@@ -224,7 +224,7 @@ describe('RTF exporter', () => {
     expect(rtf).not.toContain('\\brdrt')
   })
 
-  it('box frame is one paragraph with four borders and soft line breaks', () => {
+  it('box frame uses hard \\par returns with outer borders on first/last lines', () => {
     const rtf = linesToRtf(
       [
         [{ text: 'a', color: '#000000' }],
@@ -241,13 +241,14 @@ describe('RTF exporter', () => {
     )
     // no table — Word "保留原格式" tears nested cells apart
     expect(rtf).not.toContain('\\trowd')
+    expect(rtf).not.toContain('\\line')
     expect(rtf).toMatch(/\\brdrt\\brdrs\\brdrw40\\brdrcf\d+/)
     expect(rtf).toMatch(/\\brdrb\\brdrs\\brdrw40\\brdrcf\d+/)
     expect(rtf).toMatch(/\\brdrl\\brdrs\\brdrw40\\brdrcf\d+/)
     expect(rtf).toMatch(/\\brdrr\\brdrs\\brdrw40\\brdrcf\d+/)
-    expect((rtf.match(/\\line/g) || []).length).toBe(2)
-    expect((rtf.match(/\\pard\\plain/g) || []).length).toBe(1)
-    expect((rtf.match(/\\cbpat/g) || []).length).toBe(1)
+    expect((rtf.match(/\\pard\\plain/g) || []).length).toBe(3)
+    expect((rtf.match(/\\par/g) || []).length).toBeGreaterThanOrEqual(3)
+    expect((rtf.match(/\\cbpat/g) || []).length).toBe(3)
   })
 
   it('emits in-box caption rows with fill, font, and underlines (no line numbers)', () => {

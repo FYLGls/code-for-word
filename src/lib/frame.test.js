@@ -36,9 +36,14 @@ describe('frameStyle', () => {
     expect(css.borderRight).toContain('#007ACC')
   })
 
-  it('box skips per-line paragraph borders (outer cell draws the frame)', () => {
-    expect(rtfParaBorders('box', 4, 0, 3)).toBe('')
-    expect(rtfParaBorders('box', 4, 2, 3)).toBe('')
+  it('box uses hard returns with top/sides/bottom on first/middle/last lines', () => {
+    expect(rtfParaBorders('box', 4, 0, 3)).toMatch(/\\brdrt/)
+    expect(rtfParaBorders('box', 4, 0, 3)).toMatch(/\\brdrl/)
+    expect(rtfParaBorders('box', 4, 0, 3)).toMatch(/\\brdrr/)
+    expect(rtfParaBorders('box', 4, 1, 3)).not.toMatch(/\\brdrt/)
+    expect(rtfParaBorders('box', 4, 1, 3)).not.toMatch(/\\brdrb/)
+    expect(rtfParaBorders('box', 4, 2, 3)).toMatch(/\\brdrb/)
+    expect(rtfParaBorders('box', 4, 0, 3, true)).not.toMatch(/\\brdrt/)
     expect(cssFrameBorders('box', '#007ACC').border).toContain('solid')
   })
 

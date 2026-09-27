@@ -13,18 +13,20 @@ export function resolveFrameStyle(id) {
 }
 
 /**
- * RTF paragraph border controls for inside (non-table) mode.
+ * RTF paragraph border controls (one paragraph per code line — hard \\par returns).
  * @param {FrameStyle} frame
  * @param {number} colorIndex colortbl index for accent
  * @param {number} index line index
  * @param {number} total line count
+ * @param {boolean} [hasCaption] box: skip top edge when caption owns it
  */
-export function rtfParaBorders(frame, colorIndex, index, total) {
+export function rtfParaBorders(frame, colorIndex, index, total, hasCaption = false) {
   const s = `\\brdrs\\brdrw40\\brdrcf${colorIndex}`
   if (frame === 'bar') return `\\brdrl${s}`
   if (frame === 'rails') return `\\brdrl${s}\\brdrr${s}`
-  // box uses one multi-line paragraph with four borders — not per-line
-  return ''
+  const top = index === 0 && !hasCaption ? `\\brdrt${s}` : ''
+  const bottom = index === total - 1 ? `\\brdrb${s}` : ''
+  return `${top}\\brdrl${s}\\brdrr${s}${bottom}`
 }
 
 /**
