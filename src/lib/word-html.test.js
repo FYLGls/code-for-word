@@ -11,7 +11,7 @@ describe('Word HTML exporter', () => {
     expect(String.fromCharCode(bytes[startHtml])).toBe('<')
   })
 
-  it('emits a single-block listing without table grid', () => {
+  it('paste path uses a single-column table so Word keeps borders', () => {
     const html = linesToWordHtml(
       [
         [
@@ -30,18 +30,18 @@ describe('Word HTML exporter', () => {
       }
     )
 
+    expect(html).toContain('<table')
     expect(html).toContain('<pre')
-    expect(html).not.toContain('<table')
+    expect(html).toContain('border-collapse:collapse')
     expect(html).toContain('border-left:2.25pt solid #70AD47')
-    expect(html).toContain('display:block')
-    expect(html).toContain('width:max-content')
-    expect(html).toContain('text-align:left')
     expect(html).toContain('mso-no-proof:yes')
     expect(html).toContain('1.')
     expect(html).toContain('color:#AF00DB')
+    // Not a per-line grid
+    expect((html.match(/<tr>/g) || []).length).toBe(1)
   })
 
-  it('rails and box frames change CSS borders', () => {
+  it('rails and box frames change paste table cell borders', () => {
     const rails = linesToWordHtml(
       [[{ text: 'x', color: '#000000' }]],
       {
@@ -81,9 +81,10 @@ describe('Word HTML exporter', () => {
     expect(html).toContain('preview-page')
     expect(html).toMatch(/padding:12px [\d.]+% 12px [\d.]+%/)
     expect(html).not.toMatch(/margin:0 [\d.]+pt 0 [\d.]+pt/)
+    expect(html).not.toContain('<table')
   })
 
-  it('preview shows in-box caption rows with underline, font, and fill', () => {
+  it('preview shows in-box caption; paste uses table cell borders', () => {
     const html = linesToWordHtml(
       [[{ text: 'clc;clear;', color: '#000000' }]],
       {
@@ -112,10 +113,9 @@ describe('Word HTML exporter', () => {
     expect(html).toContain('color:#C00000')
     expect(html).toContain('border-bottom:1pt solid #1A1A1A')
     expect(html).toContain('附录 4')
-    expect(html).toContain('代码 4：问题四求解')
-    // Preview keeps a continuous outer frame; caption only draws the divider.
     expect(html).toMatch(/listing-block[^>]*border:2\.25pt solid #1A1A1A/)
-    expect(html).toMatch(/listing-caption-row[^>]*border:none;border-bottom:1pt solid #1A1A1A/)
+    expect(html).toMatch(/1\.\s*&nbsp;.*clc/)
+    expect(html).not.toMatch(/listing-caption-row[^>]*>1\./)
 
     const paste = linesToWordHtml(
       [[{ text: 'clc;clear;', color: '#000000' }]],
@@ -130,21 +130,12 @@ describe('Word HTML exporter', () => {
         preview: false
       }
     )
-    // Word paste: sides on caption/code so Word cannot tear an outer wrapper.
-    expect(paste).toMatch(/listing-block[^>]*border:none/)
+    expect(paste).toContain('<table')
+    expect(paste).toContain('你好')
     expect(paste).toMatch(/listing-caption-row[^>]*border-left:2\.25pt solid #1A1A1A/)
     expect(paste).toMatch(/listing-code[^>]*border-left:2\.25pt solid #1A1A1A/)
     expect(paste).toMatch(/listing-code[^>]*border-top:none/)
-
-    // caption is inside the listing frame, before code
-    const block = html.indexOf('listing-block')
-    const cap = html.indexOf('listing-caption')
-    const code = html.indexOf('listing-code')
-    expect(cap).toBeGreaterThan(block)
-    expect(cap).toBeLessThan(code)
-    // line numbers start at 1 for code only — caption text has no "1." prefix before 附录
-    expect(html).toMatch(/1\.\s*&nbsp;.*clc/)
-    expect(html).not.toMatch(/listing-caption-row[^>]*>1\./)
+    expect((paste.match(/<tr>/g) || []).length).toBe(2)
   })
 
   it('code inset pads both sides of code; gutter stays flush left', () => {
