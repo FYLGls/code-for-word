@@ -144,6 +144,13 @@ export function linesToWordHtml(lines, options) {
     `font-family:${fontStack};font-size:${fontSizePt}pt;` +
     `line-height:1.35;white-space:pre;word-wrap:normal;text-align:left;mso-no-proof:yes;`
 
+  // Word paste collapses ordinary spaces inside <pre>; use &nbsp; for inset pads.
+  const htmlSpaces = (spaces) => {
+    if (!spaces) return ''
+    if (preview) return escapeHtml(spaces)
+    return spaces.replace(/ /g, '&nbsp;')
+  }
+
   const lineHtml = rows.map((row, i) => {
     const code = row.length
       ? row.map((run) => runToSpan(run, options.foreground)).join('')
@@ -151,8 +158,8 @@ export function linesToWordHtml(lines, options) {
     const ln = options.lineNumbers
       ? `<span style="color:${lnColor};${lnWeight}${lnItalic}">${i + 1}${suffix}&nbsp;&nbsp;</span>`
       : ''
-    const gapL = insetLeft ? escapeHtml(insetLeft) : ''
-    const gapR = insetRight ? escapeHtml(insetRight) : ''
+    const gapL = htmlSpaces(insetLeft)
+    const gapR = htmlSpaces(insetRight)
     return `${ln}${gapL}${code}${gapR}`
   })
 
@@ -332,17 +339,54 @@ function buildPasteHtml({
       `mso-no-proof:yes;">${pre}</td></tr>`
   )
 
+  // Cap listing width to selected paper content (minus side margins) so paste
+  // roughly matches preview; Word cannot change the document's page size via HTML.
+  const pageTwips = options.pageContentTwips
+  let widthCss = 'width:auto;max-width:none;'
+  if (pageTwips != null && Number.isFinite(pageTwips) && pageTwips > 0) {
+    const inner = Math.max(1200, pageTwips - left - right)
+    widthCss = `width:${(inner / 20).toFixed(1)}pt;max-width:${(inner / 20).toFixed(1)}pt;`
+  }
+
   const table =
     `<table class="listing-block" data-frame="${frame}" cellspacing="0" cellpadding="0" border="0" style="` +
     `border-collapse:collapse;border:none;mso-table-lspace:0pt;mso-table-rspace:0pt;` +
-    `width:auto;max-width:none;">` +
+    `${widthCss}">` +
     `${trs.join('')}</table>`
 
-  const leftPt = (left / 20).toFixed(1)
-  const rightPt = (right / 20).toFixed(1)
+  return wrapPasteWithSideMargins(table, left, right)
+}
+
+/**
+ * Word drops CSS margins on wrapper divs around tables. Spacer <td> widths stick.
+ * @param {string} innerHtml
+ * @param {number} leftTwips
+ * @param {number} rightTwips
+ */
+function wrapPasteWithSideMargins(innerHtml, leftTwips, rightTwips) {
+  const L = Math.max(0, Math.round(leftTwips || 0))
+  const R = Math.max(0, Math.round(rightTwips || 0))
+  if (!L && !R) {
+    return (
+      `<div class="listing-outer" style="display:block;text-align:left;">${innerHtml}</div>`
+    )
+  }
+  const leftPt = (L / 20).toFixed(1)
+  const rightPt = (R / 20).toFixed(1)
+  const spacer = (pt, twips) =>
+    `<td class="listing-margin" width="${Math.max(1, Math.round(twips / 15))}" style="` +
+    `width:${pt}pt;min-width:${pt}pt;max-width:${pt}pt;` +
+    `border:none;padding:0;margin:0;font-size:1pt;line-height:1pt;mso-line-height-rule:exactly;">` +
+    `&nbsp;</td>`
+
   return (
-    `<div class="listing-outer" style="display:block;margin:0 ${rightPt}pt 0 ${leftPt}pt;text-align:left;">` +
-    `${table}</div>`
+    `<table class="listing-outer" cellspacing="0" cellpadding="0" border="0" style="` +
+    `border-collapse:collapse;border:none;margin:0;mso-table-lspace:0pt;mso-table-rspace:0pt;">` +
+    `<tr>` +
+    (L ? spacer(leftPt, L) : '') +
+    `<td style="border:none;padding:0;margin:0;vertical-align:top;">${innerHtml}</td>` +
+    (R ? spacer(rightPt, R) : '') +
+    `</tr></table>`
   )
 }
 
