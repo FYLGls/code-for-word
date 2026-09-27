@@ -43,7 +43,8 @@ npx codepaste
 
 Opens the installed app, or launches the Setup if you don’t have it yet.
 
-> Early builds are unsigned. If SmartScreen appears, choose **Run anyway**.
+> Current public builds may still be **unsigned**. If SmartScreen appears, choose **Run anyway**.  
+> Code signing is prepared — see [docs/code-signing.md](./docs/code-signing.md) (certificate required).
 
 Closing the window hides to the **system tray** (right-click: show / open at login / quit).
 

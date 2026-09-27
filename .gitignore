@@ -9,3 +9,10 @@ index.html.bak
 start.bat.bak
 *.exe
 !resources/**
+*.pfx
+*.p12
+*.p7b
+.secrets/
+.env
+.env.*
+!.env.example

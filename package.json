@@ -96,7 +96,8 @@
         }
       ],
       "icon": "resources/icon.ico",
-      "artifactName": "CodeForWord-Setup-${version}.${ext}"
+      "artifactName": "CodeForWord-Setup-${version}.${ext}",
+      "signAndEditExecutable": true
     },
     "executableName": "CodeForWord",
     "nsis": {

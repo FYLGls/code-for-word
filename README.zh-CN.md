@@ -42,7 +42,8 @@ npx codepaste
 
 已安装则直接打开；未安装则拉起安装包。
 
-> 首版未签名时，SmartScreen 选「仍要运行」即可。
+> 当前公开发布版可能仍为**未签名**。若 SmartScreen 提示，选「仍要运行」。  
+> 签名流程已接入，需自行购买证书后启用，见 [docs/code-signing.md](./docs/code-signing.md)。
 
 关掉窗口会进 **系统托盘**（右键：显示 / 开机启动 / 退出）。
 
