@@ -87,7 +87,9 @@ export function resolveDocxPageSetup(options) {
     size,
     margin: { top: 1440, bottom: 1440, left, right },
     contentWidth: Math.max(1200, size.width - left - right),
-    codeInset: geo.inset
+    codeInset: geo.inset,
+    // Explicit 页边距 only. Derived "默认" stays 0 so the frame is not indented twice.
+    frameIndent: { left: geo.left, right: geo.right }
   }
 }
 
@@ -260,7 +262,12 @@ export async function linesToDocxBlob(lines, options) {
   }))
 
   const page = pageSetup
-  const tableWidth = page.contentWidth
+  // pgMar already equals 页边距, so a full-width table sits on both margin edges
+  // ("顶着左右两边"). Paste keeps the frame inside the text column via \li/\ri.
+  // Pull the frame in by that same amount, and shorten it on the right.
+  const pullLeft = Math.max(0, page.frameIndent?.left || 0)
+  const pullRight = Math.max(0, page.frameIndent?.right || 0)
+  const frameWidth = Math.max(2400, page.contentWidth - pullLeft - pullRight)
   const workRows = rows.length ? rows : [[]]
   const zeroMargin = { top: 0, bottom: 0, left: 0, right: 0 }
   // One fixed table. Nested tables overflow the cell; Word/WPS then drop
@@ -269,11 +276,11 @@ export async function linesToDocxBlob(lines, options) {
   const gutterW = options.lineNumbers
     ? Math.min(
       Math.max(480, lineNumberGutterTwips(workRows.length, options)),
-      Math.floor(tableWidth * 0.28)
+      Math.floor(frameWidth * 0.28)
     )
     : 0
-  const codeColW = Math.max(600, tableWidth - gutterW)
-  const colWidths = options.lineNumbers ? [gutterW, codeColW] : [tableWidth]
+  const codeColW = Math.max(600, frameWidth - gutterW)
+  const colWidths = options.lineNumbers ? [gutterW, codeColW] : [frameWidth]
   const codeIndent = codeInset > 0 ? { left: codeInset, right: codeInset } : undefined
   const cellShade = noFill ? undefined : { type: ShadingType.CLEAR, fill }
 
@@ -309,13 +316,13 @@ export async function linesToDocxBlob(lines, options) {
   const tableRows = []
   for (const p of captionParas) {
     tableRows.push(new TableRow({
-      children: [frameCell([p], tableWidth, options.lineNumbers ? 2 : undefined)]
+      children: [frameCell([p], frameWidth, options.lineNumbers ? 2 : undefined)]
     }))
   }
   workRows.forEach((row, i) => {
     if (!options.lineNumbers) {
       tableRows.push(new TableRow({
-        children: [frameCell([codeParagraph(row)], tableWidth)]
+        children: [frameCell([codeParagraph(row)], frameWidth)]
       }))
       return
     }
@@ -347,6 +354,7 @@ export async function linesToDocxBlob(lines, options) {
   const listingTable = new Table({
     width: { size: colWidths.reduce((a, b) => a + b, 0), type: WidthType.DXA },
     columnWidths: colWidths,
+    indent: pullLeft > 0 ? { size: pullLeft, type: WidthType.DXA } : undefined,
     layout: TableLayoutType.FIXED,
     rows: tableRows,
     borders: tableBorders(frame, accentHex, !!capLines.length)

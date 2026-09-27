@@ -37,7 +37,7 @@ describe('DOCX exporter', () => {
     expect(afterCap.slice(0, 800)).not.toMatch(/w:pBdr[\s\S]{0,200}w:left[^>]*w:val="single"/)
   })
 
-  it('applies UI page margins to Word section pgMar (not table indent)', async () => {
+  it('insets the frame inside the page margins the same way paste does', async () => {
     const blob = await linesToDocxBlob(
       [[{ text: 'x', color: '#000000' }]],
       {
@@ -53,6 +53,9 @@ describe('DOCX exporter', () => {
     expect(xml).toMatch(/w:pgMar[^>]*w:left="1134"/)
     expect(xml).toMatch(/w:pgMar[^>]*w:right="1134"/)
     expect(xml).toMatch(/w:pgSz[^>]*w:w="11906"/)
+    // Frame is not the full text column: tblInd + shorter width.
+    expect(xml).toMatch(/w:tblInd[^>]*w:w="1134"/)
+    expect(xml).toMatch(/w:tblW[^>]*w:w="7370"/)
   })
 
   it('writes code inset as cell margins and honors paper + inset together', async () => {
