@@ -15,18 +15,21 @@ const PT_TO_TWIPS = 20
  * @property {string} text
  * @property {boolean} [bold]
  * @property {boolean} [italic]
+ * @property {boolean} [underline]
+ * @property {boolean} [strike]
  * @property {string} [color] hex
  * @property {string} [fontName] override paragraph font (inline code)
  */
 
 /**
  * @typedef {object} PaperPara
- * @property {'heading'|'body'|'item'|'code'|'codeCaption'} kind
+ * @property {'heading'|'body'|'item'|'code'|'codeCaption'|'caption'|'ref'} kind
  * @property {PaperRun[]} runs
  * @property {string} fontName
  * @property {number} fontSizePt
  * @property {'left'|'center'|'justify'} align
- * @property {number} firstLineTwips
+ * @property {number} firstLineTwips 负值 = 悬挂缩进（配合 leftIndentTwips）
+ * @property {number} leftIndentTwips
  * @property {number} beforeTwips
  * @property {number} afterTwips
  * @property {number|null} lineMultiple 1.5 等；null = 代码精确行距
@@ -51,6 +54,11 @@ export const PAPER_DEFAULTS = {
   heading2SizePt: 14,
   heading3SizePt: 12,
   bodyAfterPt: 0,
+  bodyBold: false,
+  bodyItalic: false,
+  bodyUnderline: false,
+  captionSizePt: 10.5,
+  refSizePt: 10.5,
   translations: null, // Map<blockIndex, string>
   translateOutput: 'original', // original | translated | bilingual
   codeCaption: true,
@@ -71,20 +79,25 @@ function ptTwips(pt) {
   return Math.round(pt * PT_TO_TWIPS)
 }
 
-/** 行内 Markdown 清理：**加粗** → bold，`代码` 去反引号，[文字](链接) → 文字。
+/**
+ * 行内标记 → Word 格式：**加粗**、*倾斜*、__下划线__、~~删除线~~、
+ * `代码`（等宽）、[文字](链接) → 文字。
  * @param {string} text
  * @returns {PaperRun[]}
  */
 export function parseInline(text) {
   const out = []
-  const re = /(\*\*([^*]+)\*\*)|(`([^`]+)`)|(\[([^\]]+)\]\([^)]*\))/g
+  const re = /(\*\*([^*]+)\*\*)|(__([^_]+)__)|(~~([^~]+)~~)|(`([^`]+)`)|(\*([^*\s][^*]*?)\*)|(\[([^\]]+)\]\([^)]*\))/g
   let last = 0
   let m
   while ((m = re.exec(text))) {
     if (m.index > last) out.push({ text: text.slice(last, m.index) })
     if (m[2] != null) out.push({ text: m[2], bold: true })
-    else if (m[4] != null) out.push({ text: m[4], fontName: 'Consolas' })
-    else if (m[6] != null) out.push({ text: m[6] })
+    else if (m[4] != null) out.push({ text: m[4], underline: true })
+    else if (m[6] != null) out.push({ text: m[6], strike: true })
+    else if (m[8] != null) out.push({ text: m[8], fontName: 'Consolas' })
+    else if (m[10] != null) out.push({ text: m[10], italic: true })
+    else if (m[12] != null) out.push({ text: m[12] })
     last = re.lastIndex
   }
   if (last < text.length) out.push({ text: text.slice(last) })
@@ -123,24 +136,25 @@ export function buildPaperModel(blocks, options = {}) {
   const paras = []
 
   const pushTextPara = (kind, text, extra = {}) => {
+    const styled = (r) => ({
+      ...r,
+      bold: opts.bodyBold || !!r.bold,
+      italic: opts.bodyItalic || !!r.italic,
+      underline: opts.bodyUnderline || !!r.underline
+    })
     paras.push({
       kind,
-      runs: parseInline(text),
+      runs: parseInline(text).map(kind === 'body' || kind === 'item' ? styled : (r) => r),
       fontName: opts.bodyFont,
       fontSizePt: opts.bodySizePt,
       align: alignBody,
       firstLineTwips: kind === 'item' || kind === 'body' ? firstLine : 0,
+      leftIndentTwips: 0,
       beforeTwips: 0,
       afterTwips: kind === 'body' || kind === 'item' ? bodyAfterTwips : 0,
       lineMultiple: opts.lineSpacing,
       ...extra
     })
-  }
-
-  const translatedText = (i) => {
-    if (!opts.translations || opts.translateOutput !== 'translated') return null
-    const t = opts.translations.get(i)
-    return t || null
   }
 
   let codeSeq = 0
@@ -149,37 +163,75 @@ export function buildPaperModel(blocks, options = {}) {
       const spec = headingSpec[Math.min(Math.max(b.level ?? 1, 1), 3)]
       const center = b.unnumbered || (centerL1 && (b.level ?? 1) === 1)
       const joinWithNumber = (body) => (b.number ? `${b.number}${joiner}${body}` : body)
-      const translated = opts.translations && opts.translateOutput === 'translated'
-        ? opts.translations.get(i)
-        : null
-      const text = translated != null ? joinWithNumber(translated) : joinWithNumber(b.text)
-      paras.push({
+      const translation = opts.translations ? opts.translations.get(i) : null
+
+      const pushHeading = (body) => paras.push({
         kind: 'heading',
-        runs: parseInline(text).map((r) => ({ ...r, bold: true })),
+        runs: parseInline(body).map((r) => ({ ...r, bold: true })),
         fontName: opts.headingFont,
         fontSizePt: spec.size,
         align: center ? 'center' : 'left',
         firstLineTwips: 0,
+        leftIndentTwips: 0,
         beforeTwips: spec.before,
         afterTwips: spec.after,
         lineMultiple: opts.lineSpacing,
         level: b.level ?? 1,
         headingCenter: center
       })
+
+      if (opts.translateOutput === 'translated' && translation != null) {
+        pushHeading(joinWithNumber(translation))
+      } else {
+        pushHeading(joinWithNumber(b.text))
+        // 双语：标题也成对翻译（同一样式与编号）
+        if (opts.translateOutput === 'bilingual' && translation != null) {
+          pushHeading(joinWithNumber(translation))
+        }
+      }
+      return
+    }
+    if (b.kind === 'caption') {
+      paras.push({
+        kind: 'caption',
+        runs: parseInline(b.text),
+        fontName: opts.bodyFont,
+        fontSizePt: opts.captionSizePt,
+        align: 'center',
+        firstLineTwips: 0,
+        leftIndentTwips: 0,
+        beforeTwips: ptTwips(3),
+        afterTwips: ptTwips(3),
+        lineMultiple: opts.lineSpacing
+      })
+      return
+    }
+    if (b.kind === 'ref') {
+      paras.push({
+        kind: 'ref',
+        runs: parseInline(b.text),
+        fontName: opts.bodyFont,
+        fontSizePt: opts.refSizePt,
+        align: 'left',
+        firstLineTwips: -480, // 悬挂缩进：换行对齐编号
+        leftIndentTwips: 480,
+        beforeTwips: 0,
+        afterTwips: 0,
+        lineMultiple: opts.lineSpacing
+      })
       return
     }
     if (b.kind === 'paragraph' || b.kind === 'item') {
-      const kind = b.kind === 'item' ? 'item' : 'body'
-      const repl = translatedText(i)
-      if (repl != null) {
-        pushTextPara(kind, repl)
+      const joinWithNumber = (body) => (b.number ? `${b.number}${joiner}${body}` : body)
+      const translation = opts.translations ? opts.translations.get(i) : null
+      if (opts.translateOutput === 'translated' && translation != null) {
+        pushTextPara(b.kind === 'item' ? 'item' : 'body', joinWithNumber(translation))
         return
       }
-      const text = b.number ? `${b.number}${joiner}${b.text}` : b.text
-      pushTextPara(kind, text)
-      if (opts.translations && opts.translateOutput === 'bilingual') {
-        const t = opts.translations.get(i)
-        if (t) pushTextPara(kind, t)
+      pushTextPara(b.kind === 'item' ? 'item' : 'body', joinWithNumber(b.text))
+      // 双语：译文沿用与原文相同的编号与样式
+      if (opts.translateOutput === 'bilingual' && translation != null) {
+        pushTextPara(b.kind === 'item' ? 'item' : 'body', joinWithNumber(translation))
       }
       return
     }

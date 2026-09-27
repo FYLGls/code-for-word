@@ -199,6 +199,7 @@ const STRINGS = {
     dirEn2Zh: "英 → 中",
     dirZh2En: "中 → 英",
     autoTranslateLabel: "自动翻译",
+    underline: "下划线",
   },
   en: {
     title: 'Code for Word',
@@ -386,6 +387,7 @@ const STRINGS = {
     dirEn2Zh: "EN → ZH",
     dirZh2En: "ZH → EN",
     autoTranslateLabel: "Auto-translate",
+    underline: "Underline",
   },
   fr: {
     title: 'Code for Word',
@@ -573,6 +575,7 @@ const STRINGS = {
     dirEn2Zh: "EN → ZH",
     dirZh2En: "ZH → EN",
     autoTranslateLabel: "Traduction auto",
+    underline: "Souligné",
   },
   es: {
     title: 'Code for Word',
@@ -760,6 +763,7 @@ const STRINGS = {
     dirEn2Zh: "EN → ZH",
     dirZh2En: "ZH → EN",
     autoTranslateLabel: "Traducir automáticamente",
+    underline: "Subrayado",
   },
   ru: {
     title: 'Code for Word',
@@ -947,6 +951,7 @@ const STRINGS = {
     dirEn2Zh: "EN → ZH",
     dirZh2En: "ZH → EN",
     autoTranslateLabel: "Автоперевод",
+    underline: "Подчёркнутый",
   }
 }
 

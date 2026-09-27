@@ -264,6 +264,9 @@ const els = {
   textIndentChars: document.getElementById('textIndentChars'),
   textAlign: document.getElementById('textAlign'),
   textBodyAfter: document.getElementById('textBodyAfter'),
+  textBold: document.getElementById('textBold'),
+  textItalic: document.getElementById('textItalic'),
+  textUnderline: document.getElementById('textUnderline'),
   translateProvider: document.getElementById('translateProvider'),
   translateDirection: document.getElementById('translateDirection'),
   translateOutput: document.getElementById('translateOutput'),
@@ -360,6 +363,9 @@ function collectPrefs() {
     textIndentChars: els.textIndentChars?.value || '2',
     textAlign: els.textAlign?.value || 'justify',
     textBodyAfter: els.textBodyAfter?.value || '0',
+    textBold: !!els.textBold?.checked,
+    textItalic: !!els.textItalic?.checked,
+    textUnderline: !!els.textUnderline?.checked,
     translateProvider: els.translateProvider?.value || 'free',
     translateDirection: els.translateDirection?.value || 'auto',
     translateOutput: els.translateOutput?.value || 'translated',
@@ -401,6 +407,9 @@ function applyPrefs(p) {
   setVal(els.textIndentChars, p.textIndentChars)
   setVal(els.textAlign, p.textAlign)
   setVal(els.textBodyAfter, p.textBodyAfter)
+  if (els.textBold) els.textBold.checked = !!p.textBold
+  if (els.textItalic) els.textItalic.checked = !!p.textItalic
+  if (els.textUnderline) els.textUnderline.checked = !!p.textUnderline
   // 旧版本默认写入的 'none' 不视为用户选择，交回新默认「免费翻译」
   if (p.translateProvider && p.translateProvider !== 'none') {
     setVal(els.translateProvider, p.translateProvider)
@@ -853,6 +862,9 @@ function paperFormatOptions() {
     firstLineIndentChars: Number(els.textIndentChars?.value ?? '2') || 0,
     justify: (els.textAlign?.value || 'justify') === 'justify',
     bodyAfterPt: Number(els.textBodyAfter?.value) || 0,
+    bodyBold: !!els.textBold?.checked,
+    bodyItalic: !!els.textItalic?.checked,
+    bodyUnderline: !!els.textUnderline?.checked,
     translateOutput: els.translateOutput?.value || 'original',
     translations: activeTranslations(),
     codeCaptionLabel: getLocale() === 'zh' ? '代码' : 'Code',
@@ -1255,6 +1267,9 @@ for (const el of [
   els.textHeadingFont, els.textLineSpacing, els.textIndentChars,
   els.textAlign, els.textBodyAfter, els.translateDirection, els.translateOutput
 ]) {
+  el?.addEventListener('change', onTextSettingChange)
+}
+for (const el of [els.textBold, els.textItalic, els.textUnderline]) {
   el?.addEventListener('change', onTextSettingChange)
 }
 /** AI 面板展开时按预设预填接口地址/模型，用户只需贴 Key */

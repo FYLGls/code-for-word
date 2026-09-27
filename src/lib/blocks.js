@@ -9,7 +9,7 @@
 
 import { findFences, lineVote } from './detect.js'
 
-/** @typedef {'heading'|'paragraph'|'item'|'code'} BlockKind */
+/** @typedef {'heading'|'paragraph'|'item'|'code'|'caption'|'ref'} BlockKind */
 /**
  * @typedef {object} Block
  * @property {BlockKind} kind
@@ -58,7 +58,10 @@ const RE = {
   numParen: /^(\d{1,3})[)）]\s*[、.．]?\s*(.+)$/,
   latinParen: /^[（(]([a-zA-Z])[)）]\s*[、.．]?\s*(.+)$/,
   latinDot: /^([a-zA-Z])[.、．]\s+([^\s].*)$/,
-  bullet: /^[-•·▪◦*+>]\s+(.+)$/
+  bullet: /^[-•·▪◦*+>]\s+(.+)$/,
+  ref: /^\[\d{1,3}\]\s*[、.．]?\s*(.+)$/,
+  caption: /^(图|表|Figure|Fig\.?|Table)\s*(\d{1,3})\s*[：:.．]?\s*(.*)$/i,
+  emphasis: /^\*\*(.+?)\*\*$/
 }
 
 const ENDING_PUNCT = /[。．！？；，、：…”』」）》]/
@@ -69,8 +72,23 @@ const ENDING_PUNCT = /[。．！？；，、：…”』」）》]/
  * @returns {{ level: number, text: string, marker: string } | null}
  */
 export function parseMarker(line) {
-  const s = line.trim()
+  let s = line.trim()
   if (!s) return null
+
+  // **强调标题**：剥掉包裹再识别编号
+  const emphasis = s.match(RE.emphasis)
+  if (emphasis) s = emphasis[1].trim()
+  if (!s) return null
+
+  // 参考文献条目：[1] 作者. 标题… 保留原文（含编号），不参与重编号
+  const ref = s.match(RE.ref)
+  if (ref && ref[1].trim()) return { level: -1, text: s, marker: 'ref' }
+
+  // 图表题注：图 1 xxx / 表 2 xxx / Figure 1 / Table 1（保留原文）
+  const cap = s.match(RE.caption)
+  if (cap && cap[3].trim() && !/[。．！？]$/.test(cap[3].trim())) {
+    return { level: -2, text: s, marker: 'caption' }
+  }
 
   const md = s.match(RE.md)
   if (md) return { level: Math.min(md[1].length, 3), text: md[2].trim(), marker: 'md' }
@@ -154,19 +172,19 @@ function joinLines(lines) {
 /**
  * 组内拆分：每行 → named / marked / bare；剩余行合并为段落。
  * @param {string[]} lines
- * @param {'auto'|'items'|'merge'} [splitMode] 分段模式：
- *   auto  = 启发式（整句行组 → 每行一条；无标记短行组 → 每行一条；其余合并）
- *   items = 无标记多行组一律每行一条
- *   merge = 无标记多行组一律合并成段
+ * @param {'auto'|'items'|'merge'} [splitMode] 分段模式
+ * @param {boolean} [proseContext] 紧跟标题/无编号栏目之后的组：
+ *   折行散文概率高，自动模式不按整句行分条
  * @returns {Unit[]}
  */
-function splitGroupToUnits(lines, splitMode = 'auto') {
+function splitGroupToUnits(lines, splitMode = 'auto', proseContext = false, listHint = false) {
   const anyMarker = lines.some((l) => parseMarker(l))
   const anyNamed = lines.length === 1
     && (NAMED_UNNUMBERED.test(lines[0].trim()) || NAMED_NUMBERED.test(lines[0].trim()))
+  const anyKeyword = lines.length === 1 && /^(关键词|keywords?)\s*[：:]/i.test(lines[0].trim())
 
   // 整组都没有编号/栏目标记 → 按分段模式整体决定
-  if (!anyMarker && !anyNamed && lines.length >= 2) {
+  if (!anyMarker && !anyNamed && !anyKeyword && lines.length >= 2) {
     if (splitMode === 'items') {
       return lines.map((l) => ({ type: 'bare', text: l.trim() }))
     }
@@ -174,9 +192,10 @@ function splitGroupToUnits(lines, splitMode = 'auto') {
       const text = joinLines(lines)
       return text ? [{ type: 'para', text }] : []
     }
-    // auto：≥3 行且多数行以句末标点收尾（PDF/网页复制的列表形态）→ 每行一条
-    const complete = lines.filter((l) => isCompleteSentenceLine(l)).length
-    if (lines.length >= 3 && complete / lines.length >= 0.6) {
+    // auto：整句行组 → 每行一条。冒号引导句之后（列表）放宽到 2 行；
+    // 标题/栏目之后的折行散文合并；行尾逗号/冒号说明折行 → 合并
+    if (lines.length >= 2 && lines.every((l) => isCompleteSentenceLine(l))
+      && (listHint || (!proseContext && lines.length >= 3))) {
       return lines.map((l) => ({ type: 'bare', text: l.trim() }))
     }
     // 全部短行且无标点 → 每行一条
@@ -213,6 +232,11 @@ function splitGroupToUnits(lines, splitMode = 'auto') {
       if (namedN) {
         flush()
         units.push({ type: 'named', text: namedN[1], unnumbered: false })
+        continue
+      }
+      // 关键词：xxx / Keywords: xxx → 普通段落
+      if (/^(关键词|keywords?)\s*[：:]/i.test(s)) {
+        para.push(line)
         continue
       }
     }
@@ -257,6 +281,8 @@ function parseTextRegion(lines, splitMode = 'auto') {
   // 展开成单元：整组代码 / 组内单元
   /** @type {Unit[]} */
   const units = []
+  let proseContext = false
+  let listHint = false
   for (const g of groups) {
     const votes = g.map((l) => lineVote(l))
     const hasCjk = g.some((l) => /[\u3400-\u9fff]/.test(l))
@@ -266,13 +292,29 @@ function parseTextRegion(lines, splitMode = 'auto') {
       && votes.some((v) => v === 'code')
     if (looksCode) {
       units.push({ type: 'code', lines: g })
+      proseContext = false
+      listHint = false
     } else {
-      units.push(...splitGroupToUnits(g, splitMode))
+      const groupUnits = splitGroupToUnits(g, splitMode, proseContext, listHint)
+      units.push(...groupUnits)
+      const last = groupUnits.length === 1 ? groupUnits[0] : null
+      proseContext = !!(last && (last.type === 'named' || last.type === 'marked'))
+      listHint = !!(last && (last.type === 'para' || last.type === 'bare') && /[:：]$/.test(last.text))
     }
   }
 
-  // 公文体检测：出现 一、/（一） 后，裸 "N." 视为第 3 级
-  const hasCnMarkers = units.some((u) => u.type === 'marked' && (u.marker === 'cnTop' || u.marker === 'cnParen'))
+  // 公文体检测：出现 一、/（一） 且其后跟着裸 "N." 时，"N." 视为第 3 级。
+  // 但若全篇有"1 引言/2 结论"式学术栏目名，判定为学术文档族，不降级。
+  const namedAcademic = units.some((u) => u.type === 'marked' && u.marker === 'dotted'
+    && u.level === 1 && NAMED_NUMBERED.test(u.text))
+  let firstCnIndex = -1
+  units.forEach((u, idx) => {
+    if (firstCnIndex === -1 && u.type === 'marked' && (u.marker === 'cnTop' || u.marker === 'cnParen')) {
+      firstCnIndex = idx
+    }
+  })
+  const demoteDottedL1 = !namedAcademic && firstCnIndex !== -1
+    && units.some((u, idx) => u.type === 'marked' && u.marker === 'dotted' && u.level === 1 && idx > firstCnIndex)
   // 列表型标记：连续出现时归为条目；大纲型标记（1. 一、 # …）保持标题以保留层级
   const LIST_MARKERS = new Set(['bullet', 'numParen', 'latinDot', 'parenNum'])
 
@@ -296,6 +338,11 @@ function parseTextRegion(lines, splitMode = 'auto') {
     }
 
     if (u.type === 'bare') {
+      // 冒号/半角冒号收尾 = 引导句（“…包括：”），不是标题
+      if (/[:：]$/.test(u.text)) {
+        blocks.push({ kind: 'paragraph', text: u.text })
+        continue
+      }
       const punct = isCompleteSentenceLine(u.text)
       const prevBare = i > 0 && units[i - 1].type === 'bare'
         ? { punct: isCompleteSentenceLine(units[i - 1].text) }
@@ -335,13 +382,23 @@ function parseTextRegion(lines, splitMode = 'auto') {
       continue
     }
 
+    // marked：参考文献条目 / 图表题注保留原文，不参与编号与层级
+    if (u.marker === 'ref') {
+      blocks.push({ kind: 'ref', text: u.text })
+      continue
+    }
+    if (u.marker === 'caption') {
+      blocks.push({ kind: 'caption', text: u.text })
+      continue
+    }
+
     // marked
     if (u.level === 0) {
       blocks.push({ kind: 'item', text: u.text })
       continue
     }
     let level = u.level
-    if (hasCnMarkers && u.marker === 'dotted' && level === 1) level = 3
+    if (demoteDottedL1 && u.marker === 'dotted' && level === 1) level = 3
 
     const nextIsContent = next && (next.type === 'para' || next.type === 'code')
     const nextIsSameMarker = next && next.type === 'marked' && next.marker === u.marker && u.marker !== 'chapter'
@@ -531,7 +588,7 @@ export function blocksToPlainText(blocks) {
   const parts = []
   let prevKind = ''
   for (const b of blocks) {
-    if (b.kind === 'heading' || b.kind === 'paragraph' || b.kind === 'code') {
+    if (b.kind === 'heading' || b.kind === 'paragraph' || b.kind === 'code' || b.kind === 'caption' || b.kind === 'ref') {
       parts.push(b.kind === 'code' ? (b.code || '') : (b.number ? `${b.number} ${b.text}` : b.text))
       prevKind = b.kind
     } else if (b.kind === 'item') {

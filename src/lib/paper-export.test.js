@@ -35,6 +35,30 @@ describe('paperToRtf', () => {
     expect(rtf).toContain('Consolas')
   })
 
+  it('emits underline, strikethrough and hanging indent', () => {
+    const paras = buildPaper('__下划线__ 与 ~~删除线~~')
+    const rtf = paperToRtf(paras)
+    expect(rtf).toContain('\\ul')
+    expect(rtf).toContain('\\strike')
+
+    const src = '[1] 张三. 某文献[J]. 学报, 2023.'
+    const refParas = buildPaper(src)
+    const refRtf = paperToRtf(refParas)
+    expect(refRtf).toContain('\\li480')
+    expect(refRtf).toContain('\\fi-480')
+  })
+
+  it('renders underline and caption centering in html', () => {
+    const paras = buildPaper('重点__内容__文本')
+    const html = paperToWordHtml(paras, { preview: true })
+    expect(html).toContain('text-decoration:underline')
+
+    const capParas = buildPaper('图 1 系统架构图')
+    const capHtml = paperToWordHtml(capParas, { preview: true })
+    expect(capHtml).toContain('paper-caption')
+    expect(capHtml).toContain('text-align:center')
+  })
+
   it('emits box frame as single multi-line paragraph', () => {
     const src = ['```python', 'x = 1', 'y = 2', '```'].join('\n')
     const paras = buildPaper(src)

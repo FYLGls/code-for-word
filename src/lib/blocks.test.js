@@ -149,6 +149,107 @@ describe('parseBlocks', () => {
     expect(blocks.map((b) => b.kind)).toEqual(['paragraph', 'code', 'paragraph'])
     expect(blocks[1].fenced).toBe(false)
   })
+
+  it('parses figure/table captions and reference entries', () => {
+    const src = [
+      '实验结果见下图。',
+      '',
+      '图 1 系统总体架构图',
+      '',
+      '表 2 三种方法的准确率对比',
+      '',
+      '参考文献',
+      '',
+      '[1] 张三, 李四. 文本分类方法研究[J]. 计算机学报, 2023.',
+      '[2] Wang L. A survey on pre-trained models[J]. JMLR, 2022.'
+    ].join('\n')
+    const blocks = parseBlocks(src)
+    expect(blocks.map((b) => b.kind)).toEqual([
+      'paragraph', 'caption', 'caption', 'heading', 'ref', 'ref'
+    ])
+    expect(blocks[1].text).toBe('图 1 系统总体架构图')
+    expect(blocks[4].text).toContain('[1] 张三')
+  })
+
+  it('strips markdown emphasis from numbered headings', () => {
+    const blocks = parseBlocks('**3 实验结果**\n\n准确率提升 5%。')
+    expect(blocks[0].kind).toBe('heading')
+    expect(blocks[0].level).toBe(1)
+    expect(blocks[0].text).toBe('实验结果')
+  })
+
+  it('normalizes a messy PDF-copied paper end to end', () => {
+    const src = [
+      '摘要',
+      '',
+      '针对传统方法不足的问题，',
+      '本文提出一种端到端分类方法。',
+      '实验表明该方法有效。',
+      '',
+      '关键词：文本分类；深度学习',
+      '',
+      '**1 引言**',
+      '',
+      '随着深度学习的发展，NLP 取得长足进步。',
+      '传统方法依赖人工特征，泛化能力有限。',
+      '本文贡献包括 __三点__：结构改进与训练优化。',
+      '',
+      '一、系统总体设计',
+      '',
+      '核心流程调用 `train()` 函数完成：',
+      '',
+      '```python',
+      'def train(model, data):',
+      '    return model.fit(data)',
+      '```',
+      '',
+      '1.1 数据预处理',
+      '',
+      '语料经清洗、分词、去停用词三步处理。',
+      '',
+      '（一）前端界面设计',
+      '',
+      '前端使用 Vue 框架开发，主要页面包括：',
+      '',
+      '数据上传页面，支持拖拽上传。',
+      '标注结果页面，支持逐条审核。',
+      '',
+      'const router = createRouter({',
+      '  history: createWebHistory()',
+      '})',
+      '',
+      '图 1 系统总体架构图',
+      '',
+      '2 结论',
+      '',
+      '本文方法显著提升了准确率。',
+      '',
+      '参考文献',
+      '',
+      '[1] 张三, 李四. 文本分类研究[J]. 计算机学报, 2023.'
+    ].join('\n')
+    const blocks = renumberBlocks(parseBlocks(src), 'academic')
+    // 结构：kind#编号（无编号标题无 #）
+    const shape = blocks.map((b) => `${b.kind}#${b.number ?? ''}`)
+    expect(shape).toEqual([
+      'heading#', 'paragraph#', 'paragraph#',
+      'heading#1', 'paragraph#',
+      'heading#2', 'paragraph#', 'code#',
+      'heading#2.1', 'paragraph#',
+      'heading#2.2', 'paragraph#', 'item#1)', 'item#2)', 'code#',
+      'caption#', 'heading#3', 'paragraph#',
+      'heading#', 'ref#'
+    ])
+    // 关键内容抽查
+    const headingTexts = blocks.filter((b) => b.kind === 'heading').map((b) => b.text)
+    expect(headingTexts).toEqual(['摘要', '引言', '系统总体设计', '数据预处理', '前端界面设计', '结论', '参考文献'])
+    expect(blocks.find((b) => b.kind === 'caption')?.text).toBe('图 1 系统总体架构图')
+    expect(blocks.find((b) => b.kind === 'ref')?.text).toContain('[1] 张三')
+    // 摘要正文折行合并成一段
+    expect(blocks[1].text).toContain('针对传统方法不足的问题，本文提出一种端到端分类方法。实验表明该方法有效。')
+    // 冒号引导句保留为段落
+    expect(blocks[11].text).toBe('前端使用 Vue 框架开发，主要页面包括：')
+  })
 })
 
 describe('renumberBlocks', () => {

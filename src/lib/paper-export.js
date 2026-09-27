@@ -140,11 +140,11 @@ export function paperToRtf(paras, options = {}) {
     const linePart = p.lineMultiple != null
       ? `\\sl${Math.round(240 * p.lineMultiple)}\\slmult1`
       : `\\sl${Math.max(240, Math.round(p.fontSizePt * 20 * 1.35))}\\slmult0`
-    const fiVal = p.firstLineTwips > 0 ? p.firstLineTwips : 0
+    const fiVal = p.firstLineTwips !== 0 ? p.firstLineTwips : 0
     const fIdx = fontIndex.get(p.fontName) ?? 0
     return (
       `\\pard\\plain${align}\\hyphpar0\\nowidctlpar` +
-      `\\li0\\ri0\\fi${fiVal}\\sb${p.beforeTwips}\\sa${p.afterTwips}${linePart}` +
+      `\\li${p.leftIndentTwips || 0}\\ri0\\fi${fiVal}\\sb${p.beforeTwips}\\sa${p.afterTwips}${linePart}` +
       `\\f${fIdx}\\fs${Math.round(p.fontSizePt * 2)}\\cf${fg}${extraShade}${borders} `
     )
   }
@@ -154,8 +154,10 @@ export function paperToRtf(paras, options = {}) {
     const cf = indexOf(r.color || fgHex)
     const bold = r.bold ? '\\b' : '\\b0'
     const italic = r.italic ? '\\i' : '\\i0'
+    const underline = r.underline ? '\\ul' : '\\ulnone'
+    const strike = r.strike ? '\\strike' : '\\strike0'
     const fOverride = r.fontName && fontIndex.has(r.fontName) ? `\\f${fontIndex.get(r.fontName)}` : ''
-    return `{\\noproof${fOverride}\\cf${cf}${bold}${italic} ${escapeRtf(r.text)}}`
+    return `{\\noproof${fOverride}\\cf${cf}${bold}${italic}${underline}${strike} ${escapeRtf(r.text)}}`
   }).join('')
 
   /** @type {string[]} */
@@ -289,7 +291,8 @@ export function paperToWordHtml(paras, options = {}) {
 /** @param {PaperPara} p @param {boolean} preview */
 function textParaHtml(p, preview) {
   const align = p.align === 'center' ? 'center' : p.align === 'justify' ? 'justify' : 'left'
-  const indent = p.firstLineTwips > 0 ? `text-indent:${(p.firstLineTwips / 20).toFixed(1)}pt;` : ''
+  const indent = p.firstLineTwips !== 0 ? `text-indent:${(p.firstLineTwips / 20).toFixed(1)}pt;` : ''
+  const padLeft = p.leftIndentTwips > 0 ? `padding-left:${(p.leftIndentTwips / 20).toFixed(1)}pt;` : ''
   const before = p.beforeTwips > 0 ? `margin-top:${(p.beforeTwips / 20).toFixed(1)}pt;` : 'margin-top:0;'
   const after = p.afterTwips > 0 ? `margin-bottom:${(p.afterTwips / 20).toFixed(1)}pt;` : 'margin-bottom:0;'
   const lh = p.lineMultiple != null ? `line-height:${p.lineMultiple};` : ''
@@ -297,13 +300,16 @@ function textParaHtml(p, preview) {
     const color = r.color && r.color !== '#000000' ? `color:${r.color};` : ''
     const weight = r.bold ? 'font-weight:bold;' : ''
     const italic = r.italic ? 'font-style:italic;' : ''
+    const deco = [r.underline ? 'underline' : '', r.strike ? 'line-through' : '']
+      .filter(Boolean).join(' ')
+    const decoration = deco ? `text-decoration:${deco};` : ''
     const font = r.fontName ? `font-family:'${r.fontName}',monospace;` : ''
-    return `<span style="${color}${weight}${italic}${font}">${escapeHtml(r.text)}</span>`
+    return `<span style="${color}${weight}${italic}${decoration}${font}">${escapeHtml(r.text)}</span>`
   }).join('')
   const msoRule = preview ? '' : 'mso-line-height-rule:"multiple";'
   return (
     `<p class="paper-p paper-${p.kind}" style="` +
-    `margin:0;${before}${after}${indent}text-align:${align};` +
+    `margin:0;${before}${after}${padLeft}${indent}text-align:${align};` +
     `font-family:${cssFontStack(p.fontName)};font-size:${p.fontSizePt}pt;${lh}${msoRule}` +
     `">${runs}</p>`
   )
@@ -355,13 +361,17 @@ export async function paperToDocxBlob(paras, options = {}) {
       line: p.lineMultiple != null ? Math.round(240 * p.lineMultiple) : Math.max(240, Math.round(p.fontSizePt * 20 * 1.35)),
       lineRule: p.lineMultiple != null ? LineRuleType.AUTO : LineRuleType.EXACT
     },
-    indent: p.firstLineTwips > 0 ? { firstLine: p.firstLineTwips } : undefined,
+    indent: p.firstLineTwips < 0
+      ? { left: p.leftIndentTwips || 480, hanging: -p.firstLineTwips }
+      : (p.firstLineTwips > 0 ? { firstLine: p.firstLineTwips } : undefined),
     children: p.runs.map((r) => new TextRun({
       text: r.text,
       font: r.fontName || p.fontName,
       size: Math.round(p.fontSizePt * 2),
       bold: !!r.bold,
       italics: !!r.italic,
+      underline: r.underline ? { type: 'single' } : undefined,
+      strike: !!r.strike,
       color: (r.color || '#000000').replace('#', ''),
       noProof: p.kind === 'code'
     }))
