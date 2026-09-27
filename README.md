@@ -21,7 +21,7 @@ Open: **https://l00plegend.github.io/code-for-word/**
 
 1. Download `CodeForWord-Setup-*.exe` from [Releases](https://github.com/L00PLeGeNd/code-for-word/releases/latest)
 2. Install and open **Code for Word**
-3. Paste code → **Copy to Word** → `Ctrl+V` in Word
+3. Paste code → **Copy to Word** → `Ctrl+V` in Word (prefer **Keep Source Formatting** in the paste options)
 
 If Windows SmartScreen says the publisher is unknown, choose **More info → Run anyway** (builds are not code-signed yet).
 
