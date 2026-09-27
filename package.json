@@ -113,7 +113,7 @@
         "es_ES",
         "ru_RU"
       ],
-      "language": "en_US",
+      "language": "1033",
       "include": "electron/installer.nsh",
       "installerIcon": "resources/icon.ico",
       "uninstallerIcon": "resources/icon.ico",
