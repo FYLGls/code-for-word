@@ -77,7 +77,7 @@ describe('Word HTML exporter', () => {
     expect(html).toMatch(/listing-block[^>]*width:\d+\.\d+pt/)
   })
 
-  it('rails and box frames change paste table cell borders', () => {
+  it('rails and box frames draw outer table borders (not cell sides)', () => {
     const rails = linesToWordHtml(
       [[{ text: 'x', color: '#000000' }]],
       {
@@ -88,7 +88,8 @@ describe('Word HTML exporter', () => {
       }
     )
     expect(rails).toContain('data-frame="rails"')
-    expect(rails).toContain('border-right:2.25pt solid #007ACC')
+    expect(rails).toMatch(/listing-block[^>]*border-right:2\.25pt solid #007ACC/)
+    expect(rails).toMatch(/listing-code[^>]*border:none/)
     const box = linesToWordHtml(
       [[{ text: 'x', color: '#000000' }]],
       {
@@ -99,7 +100,8 @@ describe('Word HTML exporter', () => {
       }
     )
     expect(box).toContain('data-frame="box"')
-    expect(box).toContain('border:2.25pt solid #007ACC')
+    expect(box).toMatch(/listing-block[^>]*border:2\.25pt solid #007ACC/)
+    expect(box).toMatch(/listing-code[^>]*border:none/)
   })
 
   it('preview maps side margins to page padding, not listing offset', () => {
@@ -168,9 +170,11 @@ describe('Word HTML exporter', () => {
     )
     expect(paste).toContain('<table')
     expect(paste).toContain('你好')
-    expect(paste).toMatch(/listing-caption-row[^>]*border-left:2\.25pt solid #1A1A1A/)
-    expect(paste).toMatch(/listing-code[^>]*border-left:2\.25pt solid #1A1A1A/)
-    expect(paste).toMatch(/listing-code[^>]*border-top:none/)
+    // Outer frame on table; cells only get the thin divider — avoids Word hairlines.
+    expect(paste).toMatch(/listing-block[^>]*border:2\.25pt solid #1A1A1A/)
+    expect(paste).toMatch(/listing-caption-row[^>]*border-bottom:1pt solid #1A1A1A/)
+    expect(paste).not.toMatch(/listing-caption-row[^>]*border-left:2\.25pt/)
+    expect(paste).toMatch(/listing-code[^>]*border:none/)
     expect((paste.match(/<tr>/g) || []).length).toBe(2)
   })
 

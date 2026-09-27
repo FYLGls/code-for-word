@@ -12,9 +12,9 @@
 
 ### 1）网页版（不用安装）
 
-打开：**https://l00plegend.github.io/code-for-word/**
+**打开网页版：** https://l00plegend.github.io/code-for-word/
 
-国内镜像：[Gitee · code-for-word](https://gitee.com/loopisme/code-for-word)
+源码镜像：[Gitee · loopisme/code-for-word](https://gitee.com/loopisme/code-for-word)（与 GitHub 同步；网页版只维护上述一个地址，避免双站过期/挂掉）
 
 - 粘贴代码 → 调选项 → **下载 DOCX**（网页上最稳）
 - 也可以点 **复制到 Word**，但浏览器粘贴效果不稳定；要高质量粘贴请用 Windows 桌面版

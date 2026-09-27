@@ -6,7 +6,12 @@ import {
   Packer,
   Paragraph,
   ShadingType,
-  TextRun
+  Table,
+  TableCell,
+  TableRow,
+  TextRun,
+  WidthType,
+  VerticalAlign
 } from 'docx'
 import {
   measureListingTwips,
@@ -14,7 +19,8 @@ import {
   applyListingStyle,
   resolveCodeInsetTwips,
   codeInsetPrefix,
-  codeInsetSuffix
+  codeInsetSuffix,
+  PAGE_CONTENT_TWIPS
 } from './lines.js'
 import { resolveFrameStyle } from './frame.js'
 import {
@@ -27,59 +33,65 @@ import {
   resolveCaptionItalic
 } from './caption.js'
 
-const NIL_BORDER = { style: BorderStyle.NONE, size: 0, color: 'auto' }
+const NIL_BORDER = { style: BorderStyle.NONE, size: 0, color: 'auto', space: 0 }
 
-/** @param {string} accentHex @param {boolean} on */
-function edge(accentHex, on) {
-  return on
-    ? { style: BorderStyle.SINGLE, size: 24, color: accentHex, space: 4 }
-    : NIL_BORDER
+/** @param {string} accentHex */
+function frameEdge(accentHex) {
+  // space:0 is required — Word "border space" opens hairline gaps at row seams.
+  return { style: BorderStyle.SINGLE, size: 24, color: accentHex, space: 0 }
 }
 
 /** Thinner underline between caption rows / caption→code. */
 function underEdge(accentHex) {
-  return { style: BorderStyle.SINGLE, size: 12, color: accentHex, space: 2 }
+  return { style: BorderStyle.SINGLE, size: 12, color: accentHex, space: 0 }
 }
 
 /**
+ * Table-level borders: continuous outer stroke + insideH divider.
+ * Avoids per-paragraph side borders that Word draws as broken rails.
  * @param {import('./frame.js').FrameStyle} frame
  * @param {string} accentHex
  * @param {boolean} hasCaption
  */
-function codeParaBorders(frame, accentHex, hasCaption) {
-  const bar = edge(accentHex, true)
-  if (frame === 'bar') return { left: bar }
-  if (frame === 'rails') return { left: bar, right: bar }
+function tableBorders(frame, accentHex, hasCaption) {
+  const f = frameEdge(accentHex)
+  const under = underEdge(accentHex)
+  const insideH = hasCaption ? under : NIL_BORDER
   if (frame === 'box') {
     return {
-      top: hasCaption ? NIL_BORDER : bar,
-      bottom: bar,
-      left: bar,
-      right: bar
+      top: f,
+      bottom: f,
+      left: f,
+      right: f,
+      insideHorizontal: insideH,
+      insideVertical: NIL_BORDER
     }
   }
-  return {}
+  if (frame === 'rails') {
+    return {
+      top: NIL_BORDER,
+      bottom: NIL_BORDER,
+      left: f,
+      right: f,
+      insideHorizontal: insideH,
+      insideVertical: NIL_BORDER
+    }
+  }
+  return {
+    top: NIL_BORDER,
+    bottom: NIL_BORDER,
+    left: f,
+    right: NIL_BORDER,
+    insideHorizontal: insideH,
+    insideVertical: NIL_BORDER
+  }
 }
 
-/**
- * @param {import('./frame.js').FrameStyle} frame
- * @param {string} accentHex
- * @param {boolean} isFirst
- */
-function captionParaBorders(frame, accentHex, isFirst) {
-  const bar = edge(accentHex, true)
-  const under = underEdge(accentHex)
-  if (frame === 'bar') return { left: bar, bottom: under }
-  if (frame === 'rails') return { left: bar, right: bar, bottom: under }
-  if (frame === 'box') {
-    return {
-      top: isFirst ? bar : NIL_BORDER,
-      bottom: under,
-      left: bar,
-      right: bar
-    }
-  }
-  return { bottom: under }
+const CELL_NO_BORDERS = {
+  top: NIL_BORDER,
+  bottom: NIL_BORDER,
+  left: NIL_BORDER,
+  right: NIL_BORDER
 }
 
 /**
@@ -194,11 +206,9 @@ export async function linesToDocxBlob(lines, options) {
   }
 
   /** @type {InstanceType<typeof Paragraph>[]} */
-  const captionParas = capLines.map((text, i) => new Paragraph({
+  const captionParas = capLines.map((text) => new Paragraph({
     alignment: AlignmentType.LEFT,
-    indent: { left, right },
     spacing: capSpacing,
-    border: captionParaBorders(frame, accentHex, i === 0),
     shading: capShading,
     children: [
       new TextRun({
@@ -214,8 +224,9 @@ export async function linesToDocxBlob(lines, options) {
   }))
 
   /** @type {InstanceType<typeof Paragraph>[]} */
-  let codeChildren
-  if (frame === 'box') {
+  let codeParas
+  if (frame === 'box' || frame === 'rails' || capLines.length) {
+    // One cell, soft line breaks — table draws the continuous frame.
     /** @type {InstanceType<typeof TextRun>[]} */
     const boxRuns = []
     rows.forEach((row, i) => {
@@ -233,12 +244,10 @@ export async function linesToDocxBlob(lines, options) {
       }
       boxRuns.push(...codeRuns(row))
     })
-    codeChildren = [
+    codeParas = [
       new Paragraph({
         alignment: AlignmentType.LEFT,
-        indent: { left, right },
         spacing,
-        border: codeParaBorders(frame, accentHex, !!capLines.length),
         shading,
         children: boxRuns.length
           ? boxRuns
@@ -246,7 +255,7 @@ export async function linesToDocxBlob(lines, options) {
       })
     ]
   } else {
-    codeChildren = rows.map((row, i) => {
+    codeParas = rows.map((row, i) => {
       /** @type {InstanceType<typeof TextRun>[]} */
       const runs = []
       if (options.lineNumbers) {
@@ -263,16 +272,51 @@ export async function linesToDocxBlob(lines, options) {
       runs.push(...codeRuns(row))
       return new Paragraph({
         alignment: AlignmentType.LEFT,
-        indent: { left, right },
         spacing,
-        border: codeParaBorders(frame, accentHex, false),
         shading,
         children: runs
       })
     })
   }
 
-  const children = [...captionParas, ...codeChildren]
+  const page = (Number.isFinite(options.pageContentTwips) && options.pageContentTwips > 0)
+    ? options.pageContentTwips
+    : PAGE_CONTENT_TWIPS
+  const tableWidth = Math.max(1200, page - left - right)
+
+  /** @param {InstanceType<typeof Paragraph>[]} paras */
+  function cell(paras, pad) {
+    return new TableCell({
+      borders: CELL_NO_BORDERS,
+      width: { size: tableWidth, type: WidthType.DXA },
+      margins: {
+        top: pad.top,
+        bottom: pad.bottom,
+        left: pad.left,
+        right: pad.right
+      },
+      verticalAlign: VerticalAlign.CENTER,
+      children: paras
+    })
+  }
+
+  /** @type {InstanceType<typeof TableRow>[]} */
+  const tableRows = [
+    ...captionParas.map((p) => new TableRow({
+      children: [cell([p], { top: 40, bottom: 40, left: 100, right: 100 })]
+    })),
+    new TableRow({
+      children: [cell(codeParas, { top: 60, bottom: 60, left: 40, right: 140 })]
+    })
+  ]
+
+  const listingTable = new Table({
+    width: { size: tableWidth, type: WidthType.DXA },
+    columnWidths: [tableWidth],
+    indent: { size: left, type: WidthType.DXA },
+    rows: tableRows,
+    borders: tableBorders(frame, accentHex, !!capLines.length)
+  })
 
   const doc = new Document({
     sections: [{
@@ -281,7 +325,7 @@ export async function linesToDocxBlob(lines, options) {
           margin: { top: 720, bottom: 720, left: 720, right: 720 }
         }
       },
-      children
+      children: [listingTable]
     }]
   })
 

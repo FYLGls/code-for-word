@@ -74,8 +74,20 @@ const FRAME_W = '2.25pt'
 const CAPTION_UNDER_W = '1pt'
 
 /**
- * Caption row borders (HTML / preview). Matches RTF/DOCX: side rails + underline;
- * box also draws the top edge on the first row.
+ * Caption row borders for **preview divs** (outer frame is on the parent).
+ * Only the underline — sides come from the outer listing box.
+ * @param {string} accent
+ */
+export function cssCaptionDivider(accent) {
+  return {
+    border: 'none',
+    borderBottom: `${CAPTION_UNDER_W} solid ${accent}`
+  }
+}
+
+/**
+ * Caption row borders (legacy / preview rows that also need side rails).
+ * Prefer outer-table + {@link cssCaptionDivider} for Word paste to avoid hairlines.
  * @param {FrameStyle} frame
  * @param {string} accent
  * @param {boolean} isFirst
@@ -108,8 +120,8 @@ export function cssCaptionBorders(frame, accent, isFirst) {
 }
 
 /**
- * Code block borders when a caption may sit above.
- * With caption: no top edge for box (caption owns it) so the frame stays continuous.
+ * Code block borders when a caption may sit above (legacy per-cell sides).
+ * Word paste should use {@link cssOuterTableBorders} instead — cell sides cause hairlines.
  * @param {FrameStyle} frame
  * @param {string} accent
  * @param {boolean} hasCaption
@@ -138,5 +150,35 @@ export function cssCodeBorders(frame, accent, hasCaption) {
   return {
     border: 'none',
     borderLeft: side
+  }
+}
+
+/**
+ * Outer frame on the paste/DOCX table — one continuous stroke (no per-cell side seams).
+ * @param {FrameStyle} frame
+ * @param {string} accent
+ */
+export function cssOuterTableBorders(frame, accent) {
+  const w = FRAME_W
+  const c = accent
+  if (frame === 'box') {
+    return {
+      border: `${w} solid ${c}`,
+      borderTop: `${w} solid ${c}`,
+      borderBottom: `${w} solid ${c}`,
+      borderLeft: `${w} solid ${c}`,
+      borderRight: `${w} solid ${c}`
+    }
+  }
+  if (frame === 'rails') {
+    return {
+      border: 'none',
+      borderLeft: `${w} solid ${c}`,
+      borderRight: `${w} solid ${c}`
+    }
+  }
+  return {
+    border: 'none',
+    borderLeft: `${w} solid ${c}`
   }
 }

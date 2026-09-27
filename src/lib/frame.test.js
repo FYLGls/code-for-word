@@ -4,7 +4,9 @@ import {
   rtfParaBorders,
   cssFrameBorders,
   cssCaptionBorders,
-  cssCodeBorders
+  cssCodeBorders,
+  cssOuterTableBorders,
+  cssCaptionDivider
 } from './frame.js'
 
 describe('frameStyle', () => {
@@ -50,5 +52,16 @@ describe('frameStyle', () => {
     expect(code.borderBottom).toContain('#007ACC')
     expect(code.borderLeft).toContain('#007ACC')
     expect(cssCodeBorders('bar', '#007ACC', false).border).toBe('none')
+  })
+
+  it('outer table borders + caption divider avoid per-cell side seams', () => {
+    const outer = cssOuterTableBorders('box', '#C00000')
+    expect(outer.border).toContain('2.25pt solid #C00000')
+    expect(cssOuterTableBorders('rails', '#007ACC').borderRight).toContain('#007ACC')
+    expect(cssOuterTableBorders('bar', '#007ACC').borderRight).toBeUndefined()
+    const div = cssCaptionDivider('#C00000')
+    expect(div.border).toBe('none')
+    expect(div.borderBottom).toBe('1pt solid #C00000')
+    expect(div.borderLeft).toBeUndefined()
   })
 })

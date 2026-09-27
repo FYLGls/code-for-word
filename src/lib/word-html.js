@@ -13,8 +13,8 @@ import {
   resolveFrameStyle,
   cssFrameBorders,
   cssBorderStyle,
-  cssCaptionBorders,
-  cssCodeBorders
+  cssCaptionDivider,
+  cssOuterTableBorders
 } from './frame.js'
 import {
   shouldShowCaption,
@@ -299,6 +299,11 @@ function buildPasteHtml({
   /** @type {string[]} */
   const trs = []
 
+  // Outer frame on the <table>; cells only draw the caption underline.
+  // Per-cell side borders create hairline gaps in Word at row seams.
+  const cellNone = 'border:none;'
+  const divider = cssBorderStyle(cssCaptionDivider(accent))
+
   if (showCap) {
     const raw = resolveCaptionLines(options)
     const display = captionDisplayLines(options)
@@ -313,10 +318,9 @@ function buildPasteHtml({
       if (!filled && !options.preview) return
       const weight = capBold ? 'bold' : '400'
       const style = capItalic ? 'italic' : 'normal'
-      const borders = cssBorderStyle(cssCaptionBorders(frame, accent, i === 0))
       trs.push(
         `<tr><td class="listing-caption-row" style="` +
-          `${borders}` +
+          `${divider}` +
           `background:${capBg};padding:4pt 10pt;` +
           `font-family:${capFont},'SimSun','Songti SC',serif;` +
           `font-size:${capFs}pt;font-weight:${weight};font-style:${style};line-height:1.45;` +
@@ -326,13 +330,9 @@ function buildPasteHtml({
     })
   }
 
-  const codeBorders = showCap
-    ? cssBorderStyle(cssCodeBorders(frame, accent, true))
-    : cssBorderStyle(cssFrameBorders(frame, accent))
-
   trs.push(
     `<tr><td class="listing-code" style="` +
-      `${codeBorders}` +
+      `${cellNone}` +
       `background:${bg};padding:6pt 14pt 6pt 4pt;` +
       `font-family:${fontStack};font-size:${fontSizePt}pt;line-height:1.35;` +
       `color:${options.foreground};text-align:left;mso-line-height-rule:exactly;` +
@@ -348,9 +348,11 @@ function buildPasteHtml({
     widthCss = `width:${(inner / 20).toFixed(1)}pt;max-width:${(inner / 20).toFixed(1)}pt;`
   }
 
+  const outer = cssBorderStyle(cssOuterTableBorders(frame, accent))
   const table =
     `<table class="listing-block" data-frame="${frame}" cellspacing="0" cellpadding="0" border="0" style="` +
-    `border-collapse:collapse;border:none;mso-table-lspace:0pt;mso-table-rspace:0pt;` +
+    `border-collapse:collapse;${outer}` +
+    `mso-table-lspace:0pt;mso-table-rspace:0pt;mso-cellspacing:0cm;` +
     `${widthCss}">` +
     `${trs.join('')}</table>`
 
