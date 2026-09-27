@@ -14,6 +14,8 @@
 
 打开：**https://l00plegend.github.io/code-for-word/**
 
+国内镜像：[Gitee · code-for-word](https://gitee.com/loopisme/code-for-word)
+
 - 粘贴代码 → 调选项 → **下载 DOCX**（网页上最稳）
 - 也可以点 **复制到 Word**，但浏览器粘贴效果不稳定；要高质量粘贴请用 Windows 桌面版
 
