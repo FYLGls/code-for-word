@@ -26,7 +26,8 @@ jobs:
 
       - run: npm test
 
-      - run: npm run dist:win
+      # electron-builder auto-publishes on tags; softprops uploads the asset instead.
+      - run: npm run dist:win -- --publish never
 
       - name: Upload Release assets
         uses: softprops/action-gh-release@v2
