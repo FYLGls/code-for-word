@@ -12,5 +12,8 @@ contextBridge.exposeInMainWorld('codepasteDesktop', {
   },
   setLocale(locale) {
     return ipcRenderer.invoke('shell:setLocale', locale)
+  },
+  writeRtf(payload) {
+    return ipcRenderer.invoke('clipboard:writeRtf', payload)
   }
 })

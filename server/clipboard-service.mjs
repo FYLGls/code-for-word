@@ -51,7 +51,7 @@ Write-Output 'ok'
   const result = spawnSync(
     'powershell.exe',
     ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-Command', ps],
-    { encoding: 'utf8', windowsHide: true }
+    { encoding: 'utf8', windowsHide: true, timeout: 12000 }
   )
 
   try {

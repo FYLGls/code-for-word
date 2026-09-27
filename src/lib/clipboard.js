@@ -51,6 +51,12 @@ function wrapHtmlFragment(html) {
  * @param {{ rtf: string, html: string, plain: string }} payload
  */
 export async function writeClipboard(payload) {
+  const desktop = typeof window !== 'undefined' ? window.codepasteDesktop : null
+  if (desktop?.isDesktop && typeof desktop.writeRtf === 'function') {
+    const native = await desktop.writeRtf({ rtf: payload.rtf, plain: payload.plain })
+    if (native?.ok) return { via: 'native-rtf', detail: native }
+  }
+
   // Only await the host when we are actually allowed to use it.
   if (canUseClipboardHost()) {
     const host = await postHost({

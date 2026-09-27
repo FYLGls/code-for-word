@@ -8,6 +8,7 @@ import {
   ShadingType,
   Table,
   TableCell,
+  TableLayoutType,
   TableRow,
   TextRun,
   WidthType,
@@ -261,27 +262,66 @@ export async function linesToDocxBlob(lines, options) {
   const page = pageSetup
   const tableWidth = page.contentWidth
   const workRows = rows.length ? rows : [[]]
-
-  // Exact code inset via cell margins (not font-dependent spaces).
-  // Outer frame cell already has a small pad; keep gutter+code columns = tableWidth.
+  const zeroMargin = { top: 0, bottom: 0, left: 0, right: 0 }
+  // One fixed table. Nested tables overflow the cell; Word/WPS then drop
+  // both pgMar and cell padding, so 页边距 and 代码边距 look ignored.
+  // Code inset is a real paragraph indent (w:ind) — the ruler shows it.
   const gutterW = options.lineNumbers
-    ? Math.max(480, lineNumberGutterTwips(workRows.length, options))
+    ? Math.min(
+      Math.max(480, lineNumberGutterTwips(workRows.length, options)),
+      Math.floor(tableWidth * 0.28)
+    )
     : 0
-  const codeColW = options.lineNumbers
-    ? Math.max(600, tableWidth - gutterW)
-    : tableWidth
-  const colWidths = options.lineNumbers ? [gutterW, codeColW] : [codeColW]
+  const codeColW = Math.max(600, tableWidth - gutterW)
+  const colWidths = options.lineNumbers ? [gutterW, codeColW] : [tableWidth]
+  const codeIndent = codeInset > 0 ? { left: codeInset, right: codeInset } : undefined
+  const cellShade = noFill ? undefined : { type: ShadingType.CLEAR, fill }
+
+  /**
+   * @param {(InstanceType<typeof Paragraph>)[]} children
+   * @param {number} width
+   * @param {number} [span]
+   */
+  function frameCell(children, width, span) {
+    return new TableCell({
+      borders: CELL_NO_BORDERS,
+      width: { size: width, type: WidthType.DXA },
+      margins: zeroMargin,
+      shading: cellShade,
+      columnSpan: span || undefined,
+      verticalAlign: VerticalAlign.CENTER,
+      children
+    })
+  }
+
+  /** @param {import('../themes.js').StyledRun[]} row */
+  function codeParagraph(row) {
+    return new Paragraph({
+      alignment: AlignmentType.LEFT,
+      spacing,
+      shading,
+      indent: codeIndent,
+      children: codeTextRuns(row)
+    })
+  }
 
   /** @type {InstanceType<typeof TableRow>[]} */
-  const innerCodeRows = workRows.map((row, i) => {
-    /** @type {InstanceType<typeof TableCell>[]} */
-    const cells = []
-    if (options.lineNumbers) {
-      cells.push(new TableCell({
-        borders: CELL_NO_BORDERS,
-        width: { size: gutterW, type: WidthType.DXA },
-        margins: { top: 0, bottom: 0, left: 0, right: 0 },
-        children: [
+  const tableRows = []
+  for (const p of captionParas) {
+    tableRows.push(new TableRow({
+      children: [frameCell([p], tableWidth, options.lineNumbers ? 2 : undefined)]
+    }))
+  }
+  workRows.forEach((row, i) => {
+    if (!options.lineNumbers) {
+      tableRows.push(new TableRow({
+        children: [frameCell([codeParagraph(row)], tableWidth)]
+      }))
+      return
+    }
+    tableRows.push(new TableRow({
+      children: [
+        frameCell([
           new Paragraph({
             alignment: AlignmentType.LEFT,
             spacing,
@@ -298,76 +338,16 @@ export async function linesToDocxBlob(lines, options) {
               })
             ]
           })
-        ]
-      }))
-    }
-    cells.push(new TableCell({
-      borders: CELL_NO_BORDERS,
-      width: { size: codeColW, type: WidthType.DXA },
-      margins: {
-        top: 0,
-        bottom: 0,
-        left: codeInset,
-        right: codeInset
-      },
-      children: [
-        new Paragraph({
-          alignment: AlignmentType.LEFT,
-          spacing,
-          shading,
-          children: codeTextRuns(row)
-        })
+        ], gutterW),
+        frameCell([codeParagraph(row)], codeColW)
       ]
     }))
-    return new TableRow({ children: cells })
   })
-
-  const innerCodeTable = new Table({
-    width: { size: colWidths.reduce((a, b) => a + b, 0), type: WidthType.DXA },
-    columnWidths: colWidths,
-    rows: innerCodeRows,
-    borders: {
-      top: NIL_BORDER,
-      bottom: NIL_BORDER,
-      left: NIL_BORDER,
-      right: NIL_BORDER,
-      insideHorizontal: NIL_BORDER,
-      insideVertical: NIL_BORDER
-    }
-  })
-
-  /** @param {(InstanceType<typeof Paragraph>|InstanceType<typeof Table>)[]} children */
-  function cell(children, pad) {
-    return new TableCell({
-      borders: CELL_NO_BORDERS,
-      width: { size: tableWidth, type: WidthType.DXA },
-      margins: {
-        top: pad.top,
-        bottom: pad.bottom,
-        left: pad.left,
-        right: pad.right
-      },
-      verticalAlign: VerticalAlign.CENTER,
-      children
-    })
-  }
-
-  // Tiny frame pad only — code↔marker gap lives on the code cell (codeInset).
-  const framePad = { top: 40, bottom: 40, left: 40, right: 40 }
-
-  /** @type {InstanceType<typeof TableRow>[]} */
-  const tableRows = [
-    ...captionParas.map((p) => new TableRow({
-      children: [cell([p], { top: 40, bottom: 40, left: 80, right: 80 })]
-    })),
-    new TableRow({
-      children: [cell([innerCodeTable], framePad)]
-    })
-  ]
 
   const listingTable = new Table({
-    width: { size: tableWidth, type: WidthType.DXA },
-    columnWidths: [tableWidth],
+    width: { size: colWidths.reduce((a, b) => a + b, 0), type: WidthType.DXA },
+    columnWidths: colWidths,
+    layout: TableLayoutType.FIXED,
     rows: tableRows,
     borders: tableBorders(frame, accentHex, !!capLines.length)
   })

@@ -73,9 +73,11 @@ describe('DOCX exporter', () => {
     const xml = await docXml(blob)
     expect(xml).toMatch(/w:pgMar[^>]*w:left="1134"/)
     expect(xml).toMatch(/w:pgSz[^>]*w:w="11906"/)
-    // code cell tcMar left/right = 1 cm
-    expect(xml).toMatch(/w:left[^>]*w:w="567"/)
-    expect(xml).toMatch(/w:right[^>]*w:w="567"/)
+    // One table, fixed layout. Inset is paragraph indent, not a nested cell pad.
+    expect((xml.match(/<w:tbl[\s>]/g) || []).length).toBe(1)
+    expect(xml).toMatch(/w:tblLayout[^>]*w:type="fixed"/)
+    expect(xml).toMatch(/w:ind[^>]*w:left="567"/)
+    expect(xml).toMatch(/w:ind[^>]*w:right="567"/)
     expect(xml).toContain('hello')
     expect(xml).toContain('1.')
   })

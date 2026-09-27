@@ -170,6 +170,7 @@ let frameHover = /** @type {import('./lib/frame.js').FrameStyle | null} */ (null
 
 let timer = 0
 let hostOk = false
+let exportBusy = false
 /** @type {{ lines: import('./themes.js').StyledRun[][], language: string, theme: import('./themes.js').Theme } | null} */
 let latest = null
 let selectsReady = false
@@ -575,15 +576,18 @@ async function refreshHost() {
 }
 
 async function copyToWord() {
+  if (exportBusy) return
   if (!els.source.value.trim()) {
     setStatus(t('statusNeedCode'), 'err')
     return
   }
-  renderPreview()
-  const opts = currentOptions()
-  const rtf = linesToRtf(latest.lines, opts)
-  const html = linesToWordHtml(latest.lines, opts)
+  exportBusy = true
   try {
+    const opts = currentOptions()
+    latest = codeToStyledLines(els.source.value, els.language.value, THEME_ID, hljs)
+    const rtf = linesToRtf(latest.lines, opts)
+    const desktop = typeof window !== 'undefined' ? window.codepasteDesktop : null
+    const html = desktop?.isDesktop ? '' : linesToWordHtml(latest.lines, opts)
     const result = await writeClipboard({ rtf, html, plain: els.source.value })
     if (result.via === 'native-rtf') setStatus(t('statusCopied'), 'ok')
     else if (
@@ -596,6 +600,8 @@ async function copyToWord() {
   } catch (err) {
     console.error(err)
     setStatus(t('statusCopyFail'), 'err')
+  } finally {
+    exportBusy = false
   }
 }
 
@@ -604,18 +610,22 @@ function stampName() {
 }
 
 async function downloadDocx() {
+  if (exportBusy) return
   if (!els.source.value.trim()) {
     setStatus(t('statusNeedCode'), 'err')
     return
   }
-  renderPreview()
+  exportBusy = true
   try {
+    latest = codeToStyledLines(els.source.value, els.language.value, THEME_ID, hljs)
     const blob = await linesToDocxBlob(latest.lines, currentOptions())
     downloadBlob(blob, `listing-${stampName()}.docx`)
     setStatus(t('statusDocx'), 'ok')
   } catch (err) {
     console.error(err)
     setStatus(t('statusDocxFail'), 'err')
+  } finally {
+    exportBusy = false
   }
 }
 

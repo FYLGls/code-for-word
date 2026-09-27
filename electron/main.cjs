@@ -1,7 +1,7 @@
 /**
  * Code for Word (码文) Electron shell — window, tray, app menu, clipboard service.
  */
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog, ipcMain } = require('electron')
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog, ipcMain, clipboard } = require('electron')
 const path = require('node:path')
 const fs = require('node:fs')
 const { pathToFileURL } = require('node:url')
@@ -25,6 +25,14 @@ ipcMain.handle('shell:openExternal', async (_event, url) => {
 ipcMain.handle('shell:setLocale', async (_event, locale) => {
   applyShellLocale(locale)
   return shellLocale
+})
+
+ipcMain.handle('clipboard:writeRtf', async (_event, payload) => {
+  const text = typeof payload?.plain === 'string' ? payload.plain : ''
+  const rtf = typeof payload?.rtf === 'string' ? payload.rtf : ''
+  if (!rtf) return { ok: false }
+  clipboard.write({ text, rtf })
+  return { ok: true }
 })
 
 const CLIP_PORT = Number(process.env.CODEPASTE_CLIP_PORT || 5199)
