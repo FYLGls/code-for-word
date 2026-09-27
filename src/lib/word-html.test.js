@@ -98,6 +98,7 @@ describe('Word HTML exporter', () => {
         captionItalic: true,
         forceItalic: true,
         accentLeft: '#1A1A1A',
+        frameStyle: 'box',
         lineNumbers: true,
         preview: true
       }
@@ -112,6 +113,11 @@ describe('Word HTML exporter', () => {
     expect(html).toContain('border-bottom:1pt solid #1A1A1A')
     expect(html).toContain('附录 4')
     expect(html).toContain('代码 4：问题四求解')
+    // Frame sides live on caption/code — not a single outer box (Word tears that).
+    expect(html).toMatch(/listing-block[^>]*border:none/)
+    expect(html).toMatch(/listing-caption-row[^>]*border-left:2\.25pt solid #1A1A1A/)
+    expect(html).toMatch(/listing-code[^>]*border-left:2\.25pt solid #1A1A1A/)
+    expect(html).toMatch(/listing-code[^>]*border-top:none/)
 
     // caption is inside the listing frame, before code
     const block = html.indexOf('listing-block')
