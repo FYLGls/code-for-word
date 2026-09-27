@@ -38,7 +38,43 @@ describe('Word HTML exporter', () => {
     expect(html).toContain('1.')
     expect(html).toContain('color:#AF00DB')
     // Not a per-line grid
-    expect((html.match(/<tr>/g) || []).length).toBe(1)
+    expect((html.match(/listing-code/g) || []).length).toBe(1)
+  })
+
+  it('paste keeps side margins via spacer cells (Word drops div margins)', () => {
+    const html = linesToWordHtml(
+      [[{ text: 'x', color: '#000000' }]],
+      {
+        background: '#F5F5F5',
+        foreground: '#000000',
+        lineNumbers: false,
+        sideMarginTwips: { left: 1134, right: 1134 }, // 2 cm
+        pageContentTwips: 9000,
+        preview: false
+      }
+    )
+    expect(html).toContain('listing-margin')
+    expect(html).toMatch(/width:56\.7pt/)
+    expect(html).toContain('listing-block')
+  })
+
+  it('paste uses nbsp for code inset and clamps block width to paper', () => {
+    const html = linesToWordHtml(
+      [[{ text: 'abc', color: '#000000' }]],
+      {
+        background: '#F5F5F5',
+        foreground: '#000000',
+        fontSizePt: 9,
+        lineNumbers: true,
+        codeInsetTwips: 567,
+        sideMarginTwips: null,
+        pageContentTwips: 9000, // A4-ish content
+        preview: false
+      }
+    )
+    // Inset pads must be &nbsp; — Word collapses normal spaces even in <pre>
+    expect(html).toMatch(/1\.&nbsp;&nbsp;<\/span>(&nbsp;)+<span[^>]*>abc<\/span>(&nbsp;)+/)
+    expect(html).toMatch(/listing-block[^>]*width:\d+\.\d+pt/)
   })
 
   it('rails and box frames change paste table cell borders', () => {
