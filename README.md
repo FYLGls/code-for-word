@@ -14,6 +14,8 @@ Paste highlighted code into Microsoft Word. Colors and Chinese text stay readabl
 
 Open: **https://l00plegend.github.io/code-for-word/**
 
+China mirror: [Gitee · code-for-word](https://gitee.com/loopisme/code-for-word)
+
 - Paste code → adjust options → **Download DOCX** (recommended on the web)
 - **Copy to Word** works in the browser too, but Word paste quality varies; desktop app is better for that
 
