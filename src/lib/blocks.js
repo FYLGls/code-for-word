@@ -207,7 +207,7 @@ function splitGroupToUnits(lines, splitMode = 'auto', proseContext = false, list
 
   // 整组都没有编号/栏目标记 → 按分段模式整体决定
   if (!anyMarker && !anyNamed && !anyKeyword && lines.length >= 2) {
-    if (splitMode === 'items') {
+    if (splitMode === 'items' || splitMode === 'lines') {
       return lines.map((l) => ({ type: 'bare', text: l.trim() }))
     }
     if (splitMode === 'merge') {
@@ -263,7 +263,14 @@ function splitGroupToUnits(lines, splitMode = 'auto', proseContext = false, list
     const m = parseMarker(line)
     if (m) {
       flush()
-      units.push({ type: 'marked', text: m.text, level: m.level, marker: m.marker, raw: s, listish: !!m.listish })
+      units.push({
+        type: 'marked',
+        text: m.text,
+        level: m.level,
+        marker: m.marker,
+        raw: s,
+        listish: !!m.listish
+      })
       continue
     }
     // 独立公式行 $$…$$ → 居中公式块（不是标题）
@@ -352,6 +359,20 @@ function parseTextRegion(lines, splitMode = 'auto') {
   let proseContext = false
   let listHint = false
   for (const g of groups) {
+    // Excel/TSV 粘贴：≥2 行含制表符且列数一致、单元格都较短 → 表格（首行作表头）
+    if (g.length >= 2) {
+      const tsvRows = g.map((l) => l.split('\t'))
+      const tsvish = g.filter((l) => l.includes('\t')).length * 2 >= g.length
+        && tsvRows.every((cells) => cells.length === tsvRows[0].length && cells.length >= 2)
+        && tsvRows.every((cells) => cells.every((c) => [...c.trim()].length <= 15))
+      if (tsvish) {
+        const header = tsvRows.shift()
+        units.push({ type: 'table', header, rows: tsvRows })
+        proseContext = false
+        listHint = false
+        continue
+      }
+    }
     // markdown 管道表格组 → 表格单元（| a | b | 连续行，可有 |---| 分隔线）
     if (g.length >= 2 && g.every((l) => isTableRow(l))) {
       const dataRows = g.filter((l) => !isTableDivider(l)).map(splitTableRow)
@@ -453,6 +474,11 @@ function parseTextRegion(lines, splitMode = 'auto') {
     }
 
     if (u.type === 'bare') {
+      // 逐行成段模式：每行独立段落（诗歌/逐行原文，不编号不分条）
+      if (splitMode === 'lines') {
+        blocks.push({ kind: 'paragraph', text: u.text, raw: u.text })
+        continue
+      }
       // 冒号/半角冒号收尾 = 引导句（“…包括：”/“各部门：”），不是标题
       if (/[:：]$/.test(u.text)) {
         blocks.push({ kind: 'paragraph', text: u.text })
@@ -493,9 +519,9 @@ function parseTextRegion(lines, splitMode = 'auto') {
         kind = 'item'
       }
       if (kind === 'heading') {
-        blocks.push({ kind: 'heading', level: 1, text: u.text, bareOrigin: true })
+        blocks.push({ kind: 'heading', level: 1, text: u.text, bareOrigin: true, raw: u.text })
       } else {
-        blocks.push({ kind, text: u.text })
+        blocks.push({ kind, text: u.text, raw: u.text })
       }
       continue
     }
@@ -512,7 +538,7 @@ function parseTextRegion(lines, splitMode = 'auto') {
 
     // marked
     if (u.level === 0) {
-      blocks.push({ kind: 'item', text: u.text })
+      blocks.push({ kind: 'item', text: u.text, raw: u.raw || u.text })
       continue
     }
     let level = u.level
@@ -549,9 +575,9 @@ function parseTextRegion(lines, splitMode = 'auto') {
         && !ENDING_PUNCT.test(u.text)
         && !!adj && [...adj.text].length <= 16 && !ENDING_PUNCT.test(adj.text)
       if (shortTitleish) {
-        blocks.push({ kind: 'heading', level, text: u.text })
+        blocks.push({ kind: 'heading', level, text: u.text, raw: u.raw || u.text })
       } else {
-        blocks.push({ kind: 'item', text: u.text, level })
+        blocks.push({ kind: 'item', text: u.text, level, raw: u.raw || u.text })
       }
       continue
     }
@@ -560,7 +586,7 @@ function parseTextRegion(lines, splitMode = 'auto') {
       blocks.push({ kind: 'paragraph', text: u.raw })
       continue
     }
-    blocks.push({ kind: 'heading', level, text: u.text, cnOrigin: cnMarker })
+    blocks.push({ kind: 'heading', level, text: u.text, cnOrigin: cnMarker, raw: u.raw || u.text })
   }
   return blocks
 }
@@ -572,7 +598,9 @@ function parseTextRegion(lines, splitMode = 'auto') {
  * @returns {Block[]}
  */
 export function parseBlocks(text, options = {}) {
-  const splitMode = options.splitMode === 'items' || options.splitMode === 'merge' ? options.splitMode : 'auto'
+  const splitMode = ['items', 'merge', 'lines'].includes(options.splitMode)
+    ? options.splitMode
+    : 'auto'
   const normalized = decodeEntities(String(text ?? ''))
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
@@ -743,7 +771,10 @@ export function renumberBlocks(blocks, schemeId) {
   return blocks.map((b) => {
     if (b.kind === 'heading') {
       itemCount = 0
-      if (scheme === 'none' || b.unnumbered) return { ...b, number: undefined }
+      // 不加编号 → 保留原文（含"第一条/一、/1.1"等原始标记，法律等文档依赖原编号引用）
+      if (scheme === 'none' || b.unnumbered) {
+        return { ...b, number: undefined, text: b.raw || b.text }
+      }
       let level = Math.max(1, Math.min(b.level ?? 1, maxLevel))
       while (level > 1 && counters[level - 1] === 0) level -= 1
       counters[level] = (counters[level] || 0) + 1
@@ -751,7 +782,7 @@ export function renumberBlocks(blocks, schemeId) {
       return { ...b, level, number: fmt.heading(level, counters) }
     }
     if (b.kind === 'item') {
-      if (scheme === 'none') return { ...b, number: undefined }
+      if (scheme === 'none') return { ...b, number: undefined, text: b.raw || b.text }
       itemCount += 1
       return { ...b, number: fmt.item(itemCount) }
     }

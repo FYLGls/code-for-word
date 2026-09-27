@@ -199,6 +199,9 @@ const STRINGS = {
     dirEn2Zh: "英 → 中",
     dirZh2En: "中 → 英",
     autoTranslateLabel: "自动翻译",
+    splitLines: "逐行成段",
+    latinFontLabel: "西文字体",
+    privacyHint: "提示：免费翻译会把文本发送至第三方接口（MyMemory），敏感内容请改用 AI 翻译（自己的 Key）或关闭翻译。",
     underline: "下划线",
   },
   en: {
@@ -387,6 +390,9 @@ const STRINGS = {
     dirEn2Zh: "EN → ZH",
     dirZh2En: "ZH → EN",
     autoTranslateLabel: "Auto-translate",
+    splitLines: "Line by paragraph",
+    latinFontLabel: "Latin font",
+    privacyHint: "Note: the free engine sends your text to a third-party API (MyMemory). For sensitive content use AI (your own key) or turn translation off.",
     underline: "Underline",
   },
   fr: {
@@ -575,6 +581,9 @@ const STRINGS = {
     dirEn2Zh: "EN → ZH",
     dirZh2En: "ZH → EN",
     autoTranslateLabel: "Traduction auto",
+    splitLines: "Ligne par paragraphe",
+    latinFontLabel: "Police latine",
+    privacyHint: "Remarque : le moteur gratuit envoie votre texte à une API tierce (MyMemory). Pour du contenu sensible, utilisez l’IA (votre clé) ou désactivez la traduction.",
     underline: "Souligné",
   },
   es: {
@@ -763,6 +772,9 @@ const STRINGS = {
     dirEn2Zh: "EN → ZH",
     dirZh2En: "ZH → EN",
     autoTranslateLabel: "Traducir automáticamente",
+    splitLines: "Línea por párrafo",
+    latinFontLabel: "Fuente latina",
+    privacyHint: "Nota: el motor gratuito envía su texto a una API de terceros (MyMemory). Para contenido sensible use IA (su propia clave) o desactive la traducción.",
     underline: "Subrayado",
   },
   ru: {
@@ -951,6 +963,9 @@ const STRINGS = {
     dirEn2Zh: "EN → ZH",
     dirZh2En: "ZH → EN",
     autoTranslateLabel: "Автоперевод",
+    splitLines: "Строка-абзац",
+    latinFontLabel: "Латинский шрифт",
+    privacyHint: "Примечание: бесплатный движок отправляет текст стороннему API (MyMemory). Для конфиденциальных данных используйте ИИ (свой ключ) или отключите перевод.",
     underline: "Подчёркнутый",
   }
 }

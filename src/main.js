@@ -160,8 +160,11 @@ const SCHEME_OPTIONS = [
 const SPLIT_OPTIONS = [
   { id: 'auto', labelKey: 'splitAuto' },
   { id: 'items', labelKey: 'splitItems' },
+  { id: 'lines', labelKey: 'splitLines' },
   { id: 'merge', labelKey: 'splitMerge' }
 ]
+
+const LATIN_FONT_OPTIONS = ['Times New Roman', 'Arial', 'Calibri', 'Cambria', 'Georgia', 'Helvetica']
 
 const INDENT_OPTIONS = [
   { id: '2', labelKey: 'indent2' },
@@ -258,6 +261,7 @@ const els = {
   textScheme: document.getElementById('textScheme'),
   textSplit: document.getElementById('textSplit'),
   textBodyFont: document.getElementById('textBodyFont'),
+  textLatinFont: document.getElementById('textLatinFont'),
   textBodySize: document.getElementById('textBodySize'),
   textHeadingFont: document.getElementById('textHeadingFont'),
   textLineSpacing: document.getElementById('textLineSpacing'),
@@ -357,6 +361,7 @@ function collectPrefs() {
     textScheme: els.textScheme?.value || 'academic',
     textSplit: els.textSplit?.value || 'auto',
     textBodyFont: els.textBodyFont?.value || '宋体',
+    textLatinFont: els.textLatinFont?.value || 'Times New Roman',
     textBodySize: els.textBodySize?.value || '12',
     textHeadingFont: els.textHeadingFont?.value || '黑体',
     textLineSpacing: els.textLineSpacing?.value || '1.5',
@@ -401,6 +406,7 @@ function applyPrefs(p) {
   setVal(els.textScheme, p.textScheme)
   setVal(els.textSplit, p.textSplit)
   setVal(els.textBodyFont, p.textBodyFont)
+  setVal(els.textLatinFont, p.textLatinFont)
   setVal(els.textBodySize, p.textBodySize)
   setVal(els.textHeadingFont, p.textHeadingFont)
   setVal(els.textLineSpacing, p.textLineSpacing)
@@ -529,6 +535,18 @@ function refillTextSelects() {
       el.appendChild(opt)
     }
     el.value = FONT_OPTIONS.some((f) => f.id === current) ? current : fallback
+  }
+
+  if (els.textLatinFont) {
+    const keep = els.textLatinFont.value || 'Times New Roman'
+    els.textLatinFont.innerHTML = ''
+    for (const font of LATIN_FONT_OPTIONS) {
+      const opt = document.createElement('option')
+      opt.value = font
+      opt.textContent = font
+      els.textLatinFont.appendChild(opt)
+    }
+    els.textLatinFont.value = LATIN_FONT_OPTIONS.includes(keep) ? keep : 'Times New Roman'
   }
 
   if (els.textBodySize) {
@@ -856,6 +874,7 @@ function paperFormatOptions() {
   return {
     scheme: resolveSchemeId(els.textScheme?.value),
     bodyFont: els.textBodyFont?.value || '宋体',
+    latinFont: els.textLatinFont?.value || 'Times New Roman',
     bodySizePt: Number(els.textBodySize?.value) || 12,
     headingFont: els.textHeadingFont?.value || '黑体',
     lineSpacing: Number(els.textLineSpacing?.value) || 1.5,
@@ -900,7 +919,7 @@ function paperExportOptions() {
 /** 文本模式：解析 + 编号 + 建模（渲染与导出共用） */
 function buildPaperFromSource() {
   const source = els.source.value
-  const splitMode = els.textSplit?.value === 'items' || els.textSplit?.value === 'merge'
+  const splitMode = ['items', 'merge', 'lines'].includes(els.textSplit?.value)
     ? els.textSplit.value
     : 'auto'
   const blocks = renumberBlocks(parseBlocks(source, { splitMode }), resolveSchemeId(els.textScheme?.value))
@@ -1055,6 +1074,9 @@ function translateErrorText(code) {
   return t('statusTranslateFail')
 }
 
+/** 块级译文缓存：相同文本块不重翻（改一个字只重翻该块，省配额提速） */
+const translationCache = new Map()
+
 async function runTranslation({ auto = false } = {}) {
   if (translating) return
   const provider = els.translateProvider?.value || 'none'
@@ -1063,6 +1085,9 @@ async function runTranslation({ auto = false } = {}) {
   if (!source.trim()) return
   const direction = els.translateDirection?.value || 'auto'
   const output = els.translateOutput?.value || 'original'
+  const splitMode = ['items', 'merge', 'lines'].includes(els.textSplit?.value)
+    ? els.textSplit.value
+    : 'auto'
 
   if (provider === 'ai' && !(els.aiBaseUrl?.value && els.aiApiKey?.value)) {
     if (auto) return
@@ -1071,9 +1096,7 @@ async function runTranslation({ auto = false } = {}) {
     return
   }
 
-  const blocks = parseBlocks(source, {
-    splitMode: els.textSplit?.value === 'items' || els.textSplit?.value === 'merge' ? els.textSplit.value : 'auto'
-  })
+  const blocks = parseBlocks(source, { splitMode })
   /** @type {number[]} */
   const idxs = []
   /** @type {string[]} */
@@ -1089,36 +1112,67 @@ async function runTranslation({ auto = false } = {}) {
     return
   }
 
+  // 免费引擎首用隐私提示（文本将发往第三方接口）
+  if (provider === 'free' && !localStorage.getItem('codepaste-privacy-ack')) {
+    localStorage.setItem('codepaste-privacy-ack', '1')
+    setStatus(t('privacyHint'), '')
+  }
+
+  // 命中缓存的块直接复用；只翻译未命中的块
+  const cacheKey = (text) => `${provider}|${direction}|${text}`
+  /** @type {string[]} */
+  const pendingTexts = []
+  /** @type {number[]} */
+  const pendingIdxs = []
+  const cached = new Map()
+  texts.forEach((text, k) => {
+    const hit = translationCache.get(cacheKey(text))
+    if (hit != null) cached.set(k, hit)
+    else {
+      pendingTexts.push(text)
+      pendingIdxs.push(k)
+    }
+  })
+
   translating = true
   syncTranslateButton()
-  if (!auto || texts.length <= 2) {
+  if (pendingTexts.length && (!auto || pendingTexts.length <= 2 || cached.size === 0)) {
     setStatus(provider === 'ai'
       ? t('statusTranslatingAi')
-      : t('statusTranslating', { done: 0, total: texts.length }))
+      : t('statusTranslating', { done: 0, total: pendingTexts.length }))
   }
   try {
-    const result = await translateTexts(texts, {
-      provider,
-      direction,
-      ai: {
-        baseUrl: els.aiBaseUrl?.value || '',
-        apiKey: els.aiApiKey?.value || '',
-        model: els.aiModel?.value || ''
-      },
-      fetchImpl: makeTranslateFetch(),
-      onProgress: (done, total) => setStatus(t('statusTranslating', { done, total }))
-    })
-    const map = new Map()
-    idxs.forEach((blockIndex, k) => map.set(blockIndex, result.translations[k]))
-    translations = map
-    translationsMeta = { source, provider, direction }
-    if (result.error) {
-      if (!auto) setStatus(translateErrorText(result.error), result.error === 'free-failed' ? '' : 'err')
-    } else if (!auto || output !== 'translated') {
-      setStatus(t('statusTranslated'), 'ok')
-    } else {
+    if (pendingTexts.length) {
+      const result = await translateTexts(pendingTexts, {
+        provider,
+        direction,
+        ai: {
+          baseUrl: els.aiBaseUrl?.value || '',
+          apiKey: els.aiApiKey?.value || '',
+          model: els.aiModel?.value || ''
+        },
+        fetchImpl: makeTranslateFetch(),
+        onProgress: (done, total) => setStatus(t('statusTranslating', { done, total }))
+      })
+      pendingTexts.forEach((text, k) => {
+        const translated = result.translations[k]
+        translationCache.set(cacheKey(text), translated)
+      })
+      if (result.error) {
+        if (!auto) setStatus(translateErrorText(result.error), result.error === 'free-failed' ? '' : 'err')
+      } else if (!auto) {
+        setStatus(t('statusTranslated'), 'ok')
+      }
+    } else if (!auto) {
       setStatus(t('statusTranslated'), 'ok')
     }
+    // 汇总全量结果（缓存 + 新翻）
+    const finalTranslations = texts.map((text, k) =>
+      cached.has(k) ? cached.get(k) : translationCache.get(cacheKey(text)))
+    const map = new Map()
+    idxs.forEach((blockIndex, k) => map.set(blockIndex, finalTranslations[k]))
+    translations = map
+    translationsMeta = { source, provider, direction }
     renderPreview()
   } catch (err) {
     console.error(err)
@@ -1273,7 +1327,7 @@ const onTextSettingChange = () => {
   renderPreview()
 }
 for (const el of [
-  els.textScheme, els.textSplit, els.textBodyFont, els.textBodySize,
+  els.textScheme, els.textSplit, els.textBodyFont, els.textLatinFont, els.textBodySize,
   els.textHeadingFont, els.textLineSpacing, els.textIndentChars,
   els.textAlign, els.textBodyAfter, els.translateDirection, els.translateOutput
 ]) {

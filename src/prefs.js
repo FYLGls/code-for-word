@@ -25,6 +25,7 @@ const KEY = 'codepaste-prefs'
  * @property {string} [textScheme] academic | thesis | official | none
  * @property {string} [textSplit] auto | items | merge
  * @property {string} [textBodyFont]
+ * @property {string} [textLatinFont]
  * @property {string} [textBodySize]
  * @property {string} [textHeadingFont]
  * @property {string} [textLineSpacing]

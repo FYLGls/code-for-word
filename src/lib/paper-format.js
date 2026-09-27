@@ -47,6 +47,7 @@ const PT_TO_TWIPS = 20
 export const PAPER_DEFAULTS = {
   scheme: 'academic',
   bodyFont: '宋体',
+  latinFont: 'Times New Roman',
   bodySizePt: 12,
   lineSpacing: 1.5,
   firstLineIndentChars: 2,
@@ -108,6 +109,52 @@ export function parseInline(text) {
 }
 
 /**
+ * 按文字系统切分 run：中文（含全角标点）用正文字体，西文/数字用西文字体。
+ * 这是论文排版刚需——宋体正文里的英文与数字应配 Times New Roman。
+ * @param {PaperRun[]} runs
+ * @param {string} latinFont
+ * @returns {PaperRun[]}
+ */
+export function applyLatinFont(runs, latinFont) {
+  if (!latinFont) return runs
+  const isLatinChar = (ch) => {
+    const code = ch.codePointAt(0)
+    return code <= 0xff || (code >= 0x2000 && code <= 0x206f) // ASCII/拉丁/通用标点
+  }
+  const isCjk = (ch) => /[\u3000-\u9fff\uff00-\uffef\u3400-\u4dbf]/.test(ch)
+  /** @type {PaperRun[]} */
+  const out = []
+  for (const run of runs) {
+    if (run.fontName) {
+      out.push(run) // 行内代码等显式字体不覆盖
+      continue
+    }
+    let buf = ''
+    let latin = null
+    const flush = () => {
+      if (!buf) return
+      out.push(latin ? { ...run, text: buf, fontName: latinFont } : { ...run, text: buf })
+      buf = ''
+    }
+    for (const ch of run.text) {
+      const chLatin = !isCjk(ch) && isLatinChar(ch)
+      if (ch === ' ' || ch === '\u00a0') {
+        buf += ch // 空格跟随前后文
+        continue
+      }
+      if (latin === null) latin = chLatin
+      if (chLatin !== latin) {
+        flush()
+        latin = chLatin
+      }
+      buf += ch
+    }
+    flush()
+  }
+  return out.length ? out : runs
+}
+
+/**
  * 标题/条目编号与正文的拼接（GB/T 7713：编号后空一格；公文式无空格）。
  * @param {string} scheme
  */
@@ -145,9 +192,10 @@ export function buildPaperModel(blocks, options = {}) {
       italic: opts.bodyItalic || !!r.italic,
       underline: opts.bodyUnderline || !!r.underline
     })
+    const base = parseInline(text).map(kind === 'body' || kind === 'item' ? styled : (r) => r)
     paras.push({
       kind,
-      runs: parseInline(text).map(kind === 'body' || kind === 'item' ? styled : (r) => r),
+      runs: applyLatinFont(base, opts.latinFont),
       fontName: opts.bodyFont,
       fontSizePt: opts.bodySizePt,
       align: alignBody,
@@ -166,7 +214,7 @@ export function buildPaperModel(blocks, options = {}) {
       const translation = opts.translations ? opts.translations.get(i) : null
       const pushTitle = (body) => paras.push({
         kind: 'title',
-        runs: parseInline(body).map((r) => ({ ...r, bold: true })),
+        runs: applyLatinFont(parseInline(body).map((r) => ({ ...r, bold: true })), opts.latinFont),
         fontName: opts.headingFont,
         fontSizePt: opts.titleSizePt,
         align: 'center',
@@ -194,7 +242,7 @@ export function buildPaperModel(blocks, options = {}) {
 
       const pushHeading = (body) => paras.push({
         kind: 'heading',
-        runs: parseInline(body).map((r) => ({ ...r, bold: true })),
+        runs: applyLatinFont(parseInline(body).map((r) => ({ ...r, bold: true })), opts.latinFont),
         fontName: opts.headingFont,
         fontSizePt: spec.size,
         align: center ? 'center' : 'left',

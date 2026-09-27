@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { parseBlocks, renumberBlocks } from './blocks.js'
-import { buildPaperModel, parseInline, paperParasToPlainText, PAPER_DEFAULTS } from './paper-format.js'
+import {
+  buildPaperModel, parseInline, paperParasToPlainText, PAPER_DEFAULTS, applyLatinFont
+} from './paper-format.js'
 
 const stubHighlight = (code) => code.split('\n').map((l) => [{ text: l, color: '#000000' }])
 
@@ -178,6 +180,22 @@ describe('buildPaperModel', () => {
     expect(paras[0].lineMultiple).toBe(2)
     expect(paras[0].firstLineTwips).toBe(0)
     expect(paras[0].align).toBe('left')
+  })
+})
+
+describe('applyLatinFont', () => {
+  it('splits mixed-script runs into CJK and latin fonts', () => {
+    const runs = applyLatinFont([{ text: '准确率提升 5.2%，效果显著' }], 'Times New Roman')
+    expect(runs).toEqual([
+      { text: '准确率提升 ' },
+      { text: '5.2%', fontName: 'Times New Roman' },
+      { text: '，效果显著' }
+    ])
+  })
+
+  it('leaves explicit-font runs untouched', () => {
+    const runs = applyLatinFont([{ text: 'code', fontName: 'Consolas' }], 'Times New Roman')
+    expect(runs).toEqual([{ text: 'code', fontName: 'Consolas' }])
   })
 })
 

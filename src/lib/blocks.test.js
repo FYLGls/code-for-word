@@ -447,6 +447,27 @@ describe('parseBlocks', () => {
     expect(detectKindOf(src)).toBe('mixed')
   })
 
+  it('preserves original numbering in none scheme for legal docs', () => {
+    const src = ['第一条 合同标的', '', '甲方应交付。', '', '1.1 交付地点', '', '乙方所在地。'].join('\n')
+    const text = blocksToPlainText(renumberBlocks(parseBlocks(src), 'none'))
+    expect(text).toContain('第一条 合同标的')
+    expect(text).toContain('1.1 交付地点')
+  })
+
+  it('keeps each line as its own paragraph in lines mode (poems)', () => {
+    const src = ['面朝大海，春暖花开', '', '从明天起，做一个幸福的人', '', '喂马，劈柴，周游世界'].join('\n')
+    const blocks = renumberBlocks(parseBlocks(src, { splitMode: 'lines' }), 'academic')
+    expect(blocks.map((b) => b.kind)).toEqual(['paragraph', 'paragraph', 'paragraph'])
+    expect(blocks.every((b) => b.number === undefined)).toBe(true)
+  })
+
+  it('parses excel TSV pastes as tables', () => {
+    const src = ['姓名\t年龄\t部门', '张三\t28\t技术部', '李四\t32\t市场部'].join('\n')
+    const table = parseBlocks(src).find((b) => b.kind === 'table')
+    expect(table.header).toEqual(['姓名', '年龄', '部门'])
+    expect(table.rows).toEqual([['张三', '28', '技术部'], ['李四', '32', '市场部']])
+  })
+
   it('normalizes a messy PDF-copied paper end to end', () => {
     const src = [
       '摘要',
@@ -554,7 +575,8 @@ describe('renumberBlocks', () => {
   it('keeps original text with none scheme', () => {
     const blocks = renumberBlocks(parseBlocks(src), 'none')
     expect(blocks.every((b) => b.number === undefined)).toBe(true)
-    expect(blocks[0].text).toBe('引言')
+    // 不加编号时保留原文标记（法律等文档依赖原编号引用）
+    expect(blocks[0].text).toBe('1 引言')
   })
 
   it('uses half-width parens for pure latin content', () => {
