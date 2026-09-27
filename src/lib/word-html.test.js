@@ -11,7 +11,7 @@ describe('Word HTML exporter', () => {
     expect(String.fromCharCode(bytes[startHtml])).toBe('<')
   })
 
-  it('paste path uses a single-column table so Word keeps borders', () => {
+  it('paste path uses one framed cell so Word keeps the box', () => {
     const html = linesToWordHtml(
       [
         [
@@ -31,17 +31,16 @@ describe('Word HTML exporter', () => {
     )
 
     expect(html).toContain('<table')
-    expect(html).toContain('<pre')
+    expect(html).not.toContain('<pre')
     expect(html).toContain('border-collapse:collapse')
-    expect(html).toContain('border-left:2.25pt solid #70AD47')
+    expect(html).toMatch(/listing-frame[^>]*border-left:2\.25pt solid #70AD47/)
     expect(html).toContain('mso-no-proof:yes')
     expect(html).toContain('1.')
     expect(html).toContain('color:#AF00DB')
-    // Not a per-line grid
-    expect((html.match(/listing-code/g) || []).length).toBe(1)
+    expect((html.match(/listing-frame/g) || []).length).toBe(1)
   })
 
-  it('paste keeps side margins via table margin-left (Word collapses spacer cells)', () => {
+  it('paste keeps side margins via table margin-left (not fixed paper pt width)', () => {
     const html = linesToWordHtml(
       [[{ text: 'x', color: '#000000' }]],
       {
@@ -54,11 +53,11 @@ describe('Word HTML exporter', () => {
       }
     )
     expect(html).toMatch(/listing-block[^>]*margin-left:56\.7pt/)
-    expect(html).toMatch(/listing-block[^>]*width:336\.6pt/)
+    expect(html).toMatch(/listing-block[^>]*width:\d+\.\d+%/)
     expect(html).not.toContain('listing-margin')
   })
 
-  it('paste uses nbsp for code inset and clamps block width to paper', () => {
+  it('paste uses pt padding for code inset (not nbsp runs)', () => {
     const html = linesToWordHtml(
       [[{ text: 'abc', color: '#000000' }]],
       {
@@ -68,16 +67,18 @@ describe('Word HTML exporter', () => {
         lineNumbers: true,
         codeInsetTwips: 567,
         sideMarginTwips: null,
-        pageContentTwips: 9000, // A4-ish content
+        pageContentTwips: 9000,
         preview: false
       }
     )
-    // Inset pads must be &nbsp; — Word collapses normal spaces even in <pre>
-    expect(html).toMatch(/1\.&nbsp;&nbsp;<\/span>(&nbsp;)+<span[^>]*>abc<\/span>(&nbsp;)+/)
-    expect(html).toMatch(/listing-block[^>]*width:\d+\.\d+pt/)
+    expect(html).toMatch(/listing-text[^>]*padding-left:28\.4pt/)
+    expect(html).toMatch(/listing-text[^>]*padding-right:28\.4pt/)
+    expect(html).not.toMatch(/listing-text[^>]*>&nbsp;&nbsp;&nbsp;/)
+    expect(html).toContain('1.')
+    expect(html).toContain('abc')
   })
 
-  it('rails and box frames draw outer table borders (not cell sides)', () => {
+  it('rails and box frames draw borders on the frame cell', () => {
     const rails = linesToWordHtml(
       [[{ text: 'x', color: '#000000' }]],
       {
@@ -88,8 +89,7 @@ describe('Word HTML exporter', () => {
       }
     )
     expect(rails).toContain('data-frame="rails"')
-    expect(rails).toMatch(/listing-block[^>]*border-right:2\.25pt solid #007ACC/)
-    expect(rails).toMatch(/listing-code[^>]*border:none/)
+    expect(rails).toMatch(/listing-frame[^>]*border-right:2\.25pt solid #007ACC/)
     const box = linesToWordHtml(
       [[{ text: 'x', color: '#000000' }]],
       {
@@ -100,8 +100,7 @@ describe('Word HTML exporter', () => {
       }
     )
     expect(box).toContain('data-frame="box"')
-    expect(box).toMatch(/listing-block[^>]*border:2\.25pt solid #007ACC/)
-    expect(box).toMatch(/listing-code[^>]*border:none/)
+    expect(box).toMatch(/listing-frame[^>]*border:2\.25pt solid #007ACC/)
   })
 
   it('preview maps side margins to page padding, not listing offset', () => {
@@ -122,7 +121,7 @@ describe('Word HTML exporter', () => {
     expect(html).not.toContain('<table')
   })
 
-  it('preview shows in-box caption; paste uses table cell borders', () => {
+  it('preview shows in-box caption; paste frames one cell with caption divider', () => {
     const html = linesToWordHtml(
       [[{ text: 'clc;clear;', color: '#000000' }]],
       {
@@ -170,12 +169,11 @@ describe('Word HTML exporter', () => {
     )
     expect(paste).toContain('<table')
     expect(paste).toContain('你好')
-    // Outer frame on table; cells only get the thin divider — avoids Word hairlines.
-    expect(paste).toMatch(/listing-block[^>]*border:2\.25pt solid #1A1A1A/)
+    expect(paste).toMatch(/listing-frame[^>]*border:2\.25pt solid #1A1A1A/)
     expect(paste).toMatch(/listing-caption-row[^>]*border-bottom:1pt solid #1A1A1A/)
     expect(paste).not.toMatch(/listing-caption-row[^>]*border-left:2\.25pt/)
-    expect(paste).toMatch(/listing-code[^>]*border:none/)
-    expect((paste.match(/<tr>/g) || []).length).toBe(2)
+    // One outer data row (frame cell); code lines are nested
+    expect((paste.match(/listing-frame/g) || []).length).toBe(1)
   })
 
   it('code inset pads both sides of code; gutter stays flush left', () => {

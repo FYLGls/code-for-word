@@ -13,8 +13,7 @@ import {
   resolveFrameStyle,
   cssFrameBorders,
   cssBorderStyle,
-  cssCaptionDivider,
-  cssOuterTableBorders
+  cssCaptionDivider
 } from './frame.js'
 import {
   shouldShowCaption,
@@ -137,33 +136,20 @@ export function linesToWordHtml(lines, options) {
   const insetRight = codeInsetSuffix(options, codeInset)
   const preview = !!options.preview
   const showCap = shouldShowCaption(options)
-
   const fontStack = `${fontName},'Courier New',monospace`
-  const preBase =
-    `margin:0;padding:0;border:none;background:transparent;` +
-    `font-family:${fontStack};font-size:${fontSizePt}pt;` +
-    `line-height:1.35;white-space:pre;word-wrap:normal;text-align:left;mso-no-proof:yes;`
-
-  // Word paste collapses ordinary spaces inside <pre>; use &nbsp; for inset pads.
-  const htmlSpaces = (spaces) => {
-    if (!spaces) return ''
-    if (preview) return escapeHtml(spaces)
-    return spaces.replace(/ /g, '&nbsp;')
-  }
-
-  const lineHtml = rows.map((row, i) => {
-    const code = row.length
-      ? row.map((run) => runToSpan(run, options.foreground)).join('')
-      : '&nbsp;'
-    const ln = options.lineNumbers
-      ? `<span style="color:${lnColor};${lnWeight}${lnItalic}">${i + 1}${suffix}&nbsp;&nbsp;</span>`
-      : ''
-    const gapL = htmlSpaces(insetLeft)
-    const gapR = htmlSpaces(insetRight)
-    return `${ln}${gapL}${code}${gapR}`
-  })
 
   if (preview) {
+    const lineHtml = rows.map((row, i) => {
+      const code = row.length
+        ? row.map((run) => runToSpan(run, options.foreground)).join('')
+        : '&nbsp;'
+      const ln = options.lineNumbers
+        ? `<span style="color:${lnColor};${lnWeight}${lnItalic}">${i + 1}${suffix}&nbsp;&nbsp;</span>`
+        : ''
+      const gapL = escapeHtml(insetLeft)
+      const gapR = escapeHtml(insetRight)
+      return `${ln}${gapL}${code}${gapR}`
+    })
     return buildPreviewHtml({
       lineHtml,
       showCap,
@@ -178,8 +164,9 @@ export function linesToWordHtml(lines, options) {
     })
   }
 
+  // Paste path: do not use <pre>+nbsp — Word expands them and strips table-level borders.
   return buildPasteHtml({
-    lineHtml,
+    rows,
     showCap,
     options,
     frame,
@@ -187,9 +174,13 @@ export function linesToWordHtml(lines, options) {
     bg,
     fontStack,
     fontSizePt,
-    preBase,
+    lnColor,
+    lnWeight,
+    lnItalic,
+    suffix,
     left,
-    right
+    right,
+    codeInset
   })
 }
 
@@ -277,11 +268,12 @@ function buildPreviewHtml({
 }
 
 /**
- * Clipboard HTML for Word — single-column table so cell borders survive paste.
- * (Word routinely strips CSS borders from plain divs.)
+ * Clipboard HTML for Word.
+ * Browser paste keeps cell borders far more reliably than table-level borders,
+ * and expands &nbsp; inset pads — so we use one framed cell + pt padding.
  */
 function buildPasteHtml({
-  lineHtml,
+  rows,
   showCap,
   options,
   frame,
@@ -289,20 +281,25 @@ function buildPasteHtml({
   bg,
   fontStack,
   fontSizePt,
-  preBase,
+  lnColor,
+  lnWeight,
+  lnItalic,
+  suffix,
   left,
-  right
+  right,
+  codeInset
 }) {
-  const body = lineHtml.join('<br>\n')
-  const pre = `<pre style="${preBase}">${body}</pre>`
+  const frameCss = cssBorderStyle(cssFrameBorders(frame, accent))
+  const divider = cssBorderStyle(cssCaptionDivider(accent))
+  const insetPt = codeInset > 0 ? (codeInset / 20).toFixed(1) : '0'
+  const linePt = Math.max(12, Math.round(fontSizePt * 1.35 * 10) / 10)
+  const textCss =
+    `border:none;margin:0;padding:0;vertical-align:top;` +
+    `font-family:${fontStack};font-size:${fontSizePt}pt;` +
+    `line-height:${linePt}pt;mso-line-height-rule:exactly;mso-no-proof:yes;`
 
   /** @type {string[]} */
-  const trs = []
-
-  // Outer frame on the <table>; cells only draw the caption underline.
-  // Per-cell side borders create hairline gaps in Word at row seams.
-  const cellNone = 'border:none;'
-  const divider = cssBorderStyle(cssCaptionDivider(accent))
+  const parts = []
 
   if (showCap) {
     const raw = resolveCaptionLines(options)
@@ -318,48 +315,74 @@ function buildPasteHtml({
       if (!filled && !options.preview) return
       const weight = capBold ? 'bold' : '400'
       const style = capItalic ? 'italic' : 'normal'
-      trs.push(
-        `<tr><td class="listing-caption-row" style="` +
+      parts.push(
+        `<div class="listing-caption-row" style="` +
           `${divider}` +
           `background:${capBg};padding:4pt 10pt;` +
           `font-family:${capFont},'SimSun','Songti SC',serif;` +
           `font-size:${capFs}pt;font-weight:${weight};font-style:${style};line-height:1.45;` +
           `color:${capColor};text-align:left;mso-line-height-rule:exactly;">` +
-          `${escapeHtml(text || '\u00a0')}</td></tr>`
+          `${escapeHtml(text || '\u00a0')}</div>`
       )
     })
   }
 
-  trs.push(
-    `<tr><td class="listing-code" style="` +
-      `${cellNone}` +
-      `background:${bg};padding:6pt 14pt 6pt 4pt;` +
-      `font-family:${fontStack};font-size:${fontSizePt}pt;line-height:1.35;` +
-      `color:${options.foreground};text-align:left;mso-line-height-rule:exactly;` +
-      `mso-no-proof:yes;">${pre}</td></tr>`
-  )
-
-  // Cap listing width; Word paste cannot change the document page setup —
-  // side "margins" become table margin-left + a narrower block (right gap).
-  const pageTwips = options.pageContentTwips
-  let widthCss = 'width:auto;max-width:none;'
-  if (pageTwips != null && Number.isFinite(pageTwips) && pageTwips > 0) {
-    const inner = Math.max(1200, pageTwips - left - right)
-    widthCss = `width:${(inner / 20).toFixed(1)}pt;max-width:${(inner / 20).toFixed(1)}pt;`
+  /** @type {string[]} */
+  const codeTrs = []
+  rows.forEach((row, i) => {
+    const code = row.length
+      ? row.map((run) => runToSpan(run, options.foreground)).join('')
+      : '&nbsp;'
+    const ln = options.lineNumbers
+      ? `<span style="color:${lnColor};${lnWeight}${lnItalic}">${i + 1}${suffix}&nbsp;&nbsp;</span>`
+      : ''
+    const gutter = options.lineNumbers
+      ? `<td class="listing-gutter" nowrap="nowrap" style="${textCss}white-space:nowrap;">${ln}</td>`
+      : ''
+    const padL = codeInset > 0 ? `padding-left:${insetPt}pt;` : ''
+    const padR = codeInset > 0 ? `padding-right:${insetPt}pt;` : ''
+    codeTrs.push(
+      `<tr>${gutter}` +
+        `<td class="listing-text" style="${textCss}${padL}${padR}">${code}</td>` +
+        `</tr>`
+    )
+  })
+  if (!codeTrs.length) {
+    codeTrs.push(`<tr><td class="listing-text" style="${textCss}">&nbsp;</td></tr>`)
   }
 
-  // Word maps table margin-left → tblInd. Empty spacer <td>s are collapsed on paste.
-  const marginCss = left > 0
-    ? `margin-left:${(left / 20).toFixed(1)}pt;`
-    : 'margin-left:0;'
+  const codeTable =
+    `<table class="listing-code" cellspacing="0" cellpadding="0" border="0" width="100%" style="` +
+    `border-collapse:collapse;border:none;width:100%;margin:0;">` +
+    `${codeTrs.join('')}</table>`
 
-  const outer = cssBorderStyle(cssOuterTableBorders(frame, accent))
+  parts.push(
+    `<div class="listing-code-wrap" style="` +
+      `border:none;margin:0;padding:6pt 8pt 6pt 4pt;background:${bg};">` +
+      `${codeTable}</div>`
+  )
+
+  // Paste cannot change the destination document's page setup. margin-left sticks
+  // (→ tblInd); fixed paper widths fight the host page and often kill borders.
+  const marginCss = left > 0 ? `margin-left:${(left / 20).toFixed(1)}pt;` : ''
+  // Soft right inset: shrink from 100% when both sides are set (approx).
+  let widthCss = 'width:100%;'
+  if (left > 0 || right > 0) {
+    const page = (Number.isFinite(options.pageContentTwips) && options.pageContentTwips > 0)
+      ? options.pageContentTwips
+      : PAGE_CONTENT_TWIPS
+    const inner = Math.max(1200, page - left - right)
+    const pct = Math.max(40, Math.min(100, (inner / page) * 100))
+    widthCss = `width:${pct.toFixed(1)}%;`
+  }
+
   const table =
     `<table class="listing-block" data-frame="${frame}" cellspacing="0" cellpadding="0" border="0" style="` +
-    `border-collapse:collapse;${outer}${marginCss}` +
-    `mso-table-lspace:0pt;mso-table-rspace:0pt;mso-cellspacing:0cm;` +
-    `${widthCss}">` +
-    `${trs.join('')}</table>`
+    `border-collapse:collapse;border:none;${marginCss}${widthCss}` +
+    `mso-table-lspace:0pt;mso-table-rspace:0pt;mso-cellspacing:0cm;">` +
+    `<tr><td class="listing-frame" style="${frameCss}` +
+    `padding:0;margin:0;background:${bg};vertical-align:top;">` +
+    `${parts.join('')}</td></tr></table>`
 
   return (
     `<div class="listing-outer" style="display:block;text-align:left;">${table}</div>`
