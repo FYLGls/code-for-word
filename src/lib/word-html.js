@@ -137,12 +137,14 @@ export function linesToWordHtml(lines, options) {
   const insetRight = codeInsetSuffix(options, codeInset)
   const preview = !!options.preview
   const showCap = shouldShowCaption(options)
-  // With caption: borders live on caption rows + code (RTF/DOCX style) so Word
-  // does not tear a single outer border between block children.
-  const borderCss = showCap
+  // Preview: one continuous outer frame (browser CSS keeps sides intact).
+  // Word HTML paste: borders on caption + code (outer wrapper gets torn by Word).
+  const borderCss = showCap && !preview
     ? cssBorderStyle({ border: 'none' })
     : cssBorderStyle(cssFrameBorders(frame, accent))
-  const codeBorderCss = cssBorderStyle(cssCodeBorders(frame, accent, showCap))
+  const codeBorderCss = showCap && !preview
+    ? cssBorderStyle(cssCodeBorders(frame, accent, true))
+    : cssBorderStyle({ border: 'none' })
 
   const fontStack = `${fontName},'Courier New',monospace`
   const preBase =
@@ -196,7 +198,11 @@ export function linesToWordHtml(lines, options) {
       const phClass = !filled && preview ? ' is-placeholder' : ''
       const weight = capBold ? 'bold' : '400'
       const style = capItalic ? 'italic' : 'normal'
-      const capBorders = cssBorderStyle(cssCaptionBorders(frame, accent, i === 0))
+      // Preview: only internal underline (outer frame draws sides).
+      // Word paste: full caption borders (sides continuous with code).
+      const capBorders = preview
+        ? `border:none;border-bottom:1pt solid ${accent};`
+        : cssBorderStyle(cssCaptionBorders(frame, accent, i === 0))
       return (
         `<div class="listing-caption-row${phClass}" style="` +
         `display:block;margin:0;padding:4pt 10pt;` +
@@ -230,7 +236,7 @@ export function linesToWordHtml(lines, options) {
     `display:block;box-sizing:border-box;` +
     widthCss +
     borderCss +
-    `background:${showCap ? 'transparent' : bg};` +
+    `background:${showCap && !preview ? 'transparent' : bg};` +
     `padding:0;` +
     `font-family:${fontStack};` +
     `font-size:${fontSizePt}pt;` +
