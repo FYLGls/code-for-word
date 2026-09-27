@@ -21,7 +21,9 @@ Source mirror: [Gitee · loopisme/code-for-word](https://gitee.com/loopisme/code
 
 ### 2) Windows app (best paste quality)
 
-1. Download `CodeForWord-Setup-*.exe` from [Releases](https://github.com/L00PLeGeNd/code-for-word/releases/latest)
+1. Download `CodeForWord-Setup-*.exe`:
+   - **Gitee Releases (China):** https://gitee.com/loopisme/code-for-word/releases
+   - GitHub Releases: https://github.com/L00PLeGeNd/code-for-word/releases/latest
 2. Install and open **Code for Word**
 3. Paste code → **Copy to Word** → `Ctrl+V` in Word (prefer **Keep Source Formatting** in the paste options)
 

@@ -21,7 +21,9 @@
 
 ### 2）Windows 桌面版（粘贴效果最好）
 
-1. 在 [Releases](https://github.com/L00PLeGeNd/code-for-word/releases/latest) 下载 `CodeForWord-Setup-*.exe`
+1. 下载安装包 `CodeForWord-Setup-*.exe`（国内优先 Gitee）：
+   - **Gitee Releases（国内）：** https://gitee.com/loopisme/code-for-word/releases
+   - GitHub Releases：https://github.com/L00PLeGeNd/code-for-word/releases/latest
 2. 安装后从开始菜单打开 **Code for Word**
 3. 粘贴代码 → **复制到 Word** → 到 Word 里 `Ctrl+V`（粘贴选项尽量选 **保留源格式**）
 
