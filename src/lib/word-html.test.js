@@ -113,11 +113,28 @@ describe('Word HTML exporter', () => {
     expect(html).toContain('border-bottom:1pt solid #1A1A1A')
     expect(html).toContain('附录 4')
     expect(html).toContain('代码 4：问题四求解')
-    // Frame sides live on caption/code — not a single outer box (Word tears that).
-    expect(html).toMatch(/listing-block[^>]*border:none/)
-    expect(html).toMatch(/listing-caption-row[^>]*border-left:2\.25pt solid #1A1A1A/)
-    expect(html).toMatch(/listing-code[^>]*border-left:2\.25pt solid #1A1A1A/)
-    expect(html).toMatch(/listing-code[^>]*border-top:none/)
+    // Preview keeps a continuous outer frame; caption only draws the divider.
+    expect(html).toMatch(/listing-block[^>]*border:2\.25pt solid #1A1A1A/)
+    expect(html).toMatch(/listing-caption-row[^>]*border:none;border-bottom:1pt solid #1A1A1A/)
+
+    const paste = linesToWordHtml(
+      [[{ text: 'clc;clear;', color: '#000000' }]],
+      {
+        background: '#FFFFFF',
+        foreground: '#000000',
+        captionEnabled: true,
+        captionLines: ['你好'],
+        accentLeft: '#1A1A1A',
+        frameStyle: 'box',
+        lineNumbers: true,
+        preview: false
+      }
+    )
+    // Word paste: sides on caption/code so Word cannot tear an outer wrapper.
+    expect(paste).toMatch(/listing-block[^>]*border:none/)
+    expect(paste).toMatch(/listing-caption-row[^>]*border-left:2\.25pt solid #1A1A1A/)
+    expect(paste).toMatch(/listing-code[^>]*border-left:2\.25pt solid #1A1A1A/)
+    expect(paste).toMatch(/listing-code[^>]*border-top:none/)
 
     // caption is inside the listing frame, before code
     const block = html.indexOf('listing-block')
