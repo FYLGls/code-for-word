@@ -649,11 +649,25 @@ textarea:focus { background: #fff; }
   box-shadow: none;
   box-sizing: border-box;
 }
-.preview-sheet pre {
+.preview-sheet .listing-code {
+  display: block;
+  white-space: normal;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.preview-sheet .listing-line {
+  display: block;
   white-space: pre;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+.preview-sheet pre {
+  white-space: pre !important;
   margin: 0;
   text-align: left;
   overflow-x: auto;
+  max-width: 100%;
 }
 .preview-empty {
   width: min(100%, 380px);
