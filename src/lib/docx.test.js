@@ -55,6 +55,49 @@ describe('DOCX exporter', () => {
     expect(xml).toMatch(/w:pgSz[^>]*w:w="11906"/)
   })
 
+  it('writes code inset as cell margins and honors paper + inset together', async () => {
+    const blob = await linesToDocxBlob(
+      [[{ text: 'hello', color: '#000000' }]],
+      {
+        background: '#FFFFFF',
+        foreground: '#000000',
+        sideMarginTwips: { left: 1134, right: 1134 },
+        codeInsetTwips: 567,
+        paperId: 'a4',
+        pageContentTwips: 9026,
+        frameStyle: 'box',
+        lineNumbers: true,
+        fontSizePt: 9
+      }
+    )
+    const xml = await docXml(blob)
+    expect(xml).toMatch(/w:pgMar[^>]*w:left="1134"/)
+    expect(xml).toMatch(/w:pgSz[^>]*w:w="11906"/)
+    // code cell tcMar left/right = 1 cm
+    expect(xml).toMatch(/w:left[^>]*w:w="567"/)
+    expect(xml).toMatch(/w:right[^>]*w:w="567"/)
+    expect(xml).toContain('hello')
+    expect(xml).toContain('1.')
+  })
+
+  it('maps paperId a5 to real page size when margins are custom', async () => {
+    const blob = await linesToDocxBlob(
+      [[{ text: 'x', color: '#000000' }]],
+      {
+        background: '#FFFFFF',
+        foreground: '#000000',
+        sideMarginTwips: { left: 720, right: 720 },
+        paperId: 'a5',
+        pageContentTwips: 6950,
+        frameStyle: 'bar'
+      }
+    )
+    const xml = await docXml(blob)
+    expect(xml).toMatch(/w:pgSz[^>]*w:w="8391"/)
+    expect(xml).toMatch(/w:pgMar[^>]*w:left="720"/)
+    expect(xml).toMatch(/w:pgMar[^>]*w:right="720"/)
+  })
+
   it('emits hard paragraph breaks (no soft w:br) for multi-line code', async () => {
     const blob = await linesToDocxBlob(
       [

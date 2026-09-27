@@ -302,7 +302,7 @@ describe('RTF exporter', () => {
     expect(rtf).not.toContain('\\trowd')
   })
 
-  it('applies code inset on both sides; gutter stays flush to the left marker', () => {
+  it('applies code inset via absolute \\tx (includes \\li); gutter stays flush', () => {
     const rtf = linesToRtf(
       [[{ text: 'abc', color: '#000000' }]],
       {
@@ -312,15 +312,19 @@ describe('RTF exporter', () => {
         lineNumbers: true,
         codeInsetTwips: 567, // 1 cm per side
         pageContentTwips: 9000,
-        sideMarginTwips: null
+        sideMarginTwips: { left: 1134, right: 1134 }
       }
     )
     const ln = rtf.indexOf('1.  ')
     const code = rtf.indexOf('abc')
     expect(ln).toBeGreaterThan(-1)
     expect(code).toBeGreaterThan(ln)
-    // left pad between gutter and code; right pad after code
-    expect(rtf.slice(ln, code)).toMatch(/1\.  \}.*\\i0 +\}/)
+    // Word \\tx is from page margin — must be li + gutter + inset (> li alone)
+    expect(rtf).toMatch(/\\li1134\\ri1134/)
+    const tx = Number(rtf.match(/\\tx(\d+)/)?.[1] || 0)
+    expect(tx).toBeGreaterThan(1134 + 567)
+    expect(rtf.slice(ln, code)).toContain('\\tab')
+    // right pad after code (spaces)
     expect(rtf.slice(code)).toMatch(/abc\}.*\\i0 +\}/)
   })
 

@@ -222,9 +222,12 @@ export function cmToTwips(cm) {
 /**
  * Left/right listing inset presets. null = 默认 (no extra indent).
  * Distance of the marker/frame from Word page content edges.
+ * Includes thesis-common values; smaller pads first so paste doesn't look oversized.
  */
 export const SIDE_MARGIN_OPTIONS = [
   { id: 'auto', labelKey: 'marginAuto', twips: null },
+  { id: 'cm10', labelKey: 'marginCm10', twips: cmToTwips(1) },
+  { id: 'cm15', labelKey: 'marginCm15', twips: cmToTwips(1.5) },
   { id: 'cm20', labelKey: 'marginCm20', twips: cmToTwips(2) },
   { id: 'cm25', labelKey: 'marginCm25', twips: cmToTwips(2.5) },
   { id: 'cm254', labelKey: 'marginCm254', twips: cmToTwips(2.54) },
@@ -242,8 +245,7 @@ export const CODE_INSET_OPTIONS = [
   { id: 'cm075', labelKey: 'codeInsetCm075', twips: cmToTwips(0.75) },
   { id: 'cm10', labelKey: 'codeInsetCm10', twips: cmToTwips(1) },
   { id: 'cm15', labelKey: 'codeInsetCm15', twips: cmToTwips(1.5) },
-  { id: 'cm20', labelKey: 'codeInsetCm20', twips: cmToTwips(2) },
-  { id: 'cm25', labelKey: 'codeInsetCm25', twips: cmToTwips(2.5) }
+  { id: 'cm20', labelKey: 'codeInsetCm20', twips: cmToTwips(2) }
 ]
 
 /**

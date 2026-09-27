@@ -15,11 +15,10 @@ import {
 } from 'docx'
 import {
   applyListingStyle,
-  listingSideIndents,
-  resolveCodeInsetTwips,
-  codeInsetPrefix,
-  codeInsetSuffix
+  resolveListingGeometry,
+  lineNumberGutterTwips
 } from './lines.js'
+import { cmToTwips } from '../themes.js'
 import { resolveFrameStyle } from './frame.js'
 import {
   shouldShowCaption,
@@ -55,18 +54,25 @@ const PAPER_SIZES = {
 export function resolveDocxPageSetup(options) {
   const id = typeof options?.paperId === 'string' ? options.paperId : 'fit'
   const size = PAPER_SIZES[id] || PAPER_SIZES.a4
-  const custom = listingSideIndents(0, options?.sideMarginTwips, options?.pageContentTwips)
+  const geo = resolveListingGeometry(
+    options?.sideMarginTwips,
+    options?.codeInsetTwips,
+    options?.pageContentTwips
+  )
 
   let left
   let right
-  if (custom.left > 0 || custom.right > 0) {
-    left = custom.left || custom.right
-    right = custom.right || custom.left
+  if (geo.left > 0 || geo.right > 0) {
+    // Explicit UI 页边距 → real Word page margins (honor 0 on one side)
+    left = Math.max(0, geo.left)
+    right = Math.max(0, geo.right)
   } else if (Number.isFinite(options?.pageContentTwips) && options.pageContentTwips > 0) {
+    // Paper chosen, margin "默认" → derive from paper's content width
     const pair = Math.max(0, size.width - options.pageContentTwips)
     left = right = Math.max(720, Math.floor(pair / 2))
   } else {
-    left = right = 1440
+    // 适应纸张 + 默认：2cm (preview is flush; DOCX still needs printable margins)
+    left = right = cmToTwips(2)
   }
 
   const maxPair = Math.max(0, size.width - 2400)
@@ -79,7 +85,8 @@ export function resolveDocxPageSetup(options) {
   return {
     size,
     margin: { top: 1440, bottom: 1440, left, right },
-    contentWidth: Math.max(1200, size.width - left - right)
+    contentWidth: Math.max(1200, size.width - left - right),
+    codeInset: geo.inset
   }
 }
 
@@ -184,9 +191,7 @@ export async function linesToDocxBlob(lines, options) {
   const accentHex = (options.accentLeft || '#007ACC').replace('#', '')
   const frame = resolveFrameStyle(options.frameStyle)
   const pageSetup = resolveDocxPageSetup(options)
-  const codeInset = resolveCodeInsetTwips(options.codeInsetTwips, options.pageContentTwips, options.sideMarginTwips)
-  const insetLeft = codeInsetPrefix(options, codeInset)
-  const insetRight = codeInsetSuffix(options, codeInset)
+  const codeInset = pageSetup.codeInset || 0
   const useExact = pt < 16
   const line = Math.max(240, Math.round(pt * 20 * 1.35))
   const spacing = useExact
@@ -206,18 +211,9 @@ export async function linesToDocxBlob(lines, options) {
   const capSpacing = { before: 0, after: 0, line: 276, lineRule: LineRuleType.AUTO }
 
   /** @param {import('../themes.js').StyledRun[]} row */
-  function codeRuns(row) {
+  function codeTextRuns(row) {
     /** @type {InstanceType<typeof TextRun>[]} */
     const runs = []
-    if (insetLeft) {
-      runs.push(new TextRun({
-        text: insetLeft,
-        font: fontName,
-        size: fontSize,
-        color: fg,
-        noProof: true
-      }))
-    }
     if (!row.length) {
       runs.push(new TextRun({
         text: ' ',
@@ -241,15 +237,6 @@ export async function linesToDocxBlob(lines, options) {
         }))
       }
     }
-    if (insetRight) {
-      runs.push(new TextRun({
-        text: insetRight,
-        font: fontName,
-        size: fontSize,
-        color: fg,
-        noProof: true
-      }))
-    }
     return runs
   }
 
@@ -271,38 +258,86 @@ export async function linesToDocxBlob(lines, options) {
     ]
   }))
 
-  /** @type {InstanceType<typeof Paragraph>[]} */
-  // One paragraph per line (hard Enter). Soft breaks show as ↓ in Word.
-  const codeParas = (rows.length ? rows : [[]]).map((row, i) => {
-    /** @type {InstanceType<typeof TextRun>[]} */
-    const runs = []
-    if (options.lineNumbers) {
-      runs.push(new TextRun({
-        text: `${i + 1}${suffix}  `,
-        font: fontName,
-        size: fontSize,
-        color: lnColor,
-        bold: !!options.forceBold,
-        italics: !!options.forceItalic,
-        noProof: true
-      }))
-    }
-    runs.push(...codeRuns(row))
-    return new Paragraph({
-      alignment: AlignmentType.LEFT,
-      spacing,
-      shading,
-      children: runs.length
-        ? runs
-        : [new TextRun({ text: ' ', font: fontName, size: fontSize, noProof: true })]
-    })
-  })
-
   const page = pageSetup
   const tableWidth = page.contentWidth
+  const workRows = rows.length ? rows : [[]]
 
-  /** @param {InstanceType<typeof Paragraph>[]} paras */
-  function cell(paras, pad) {
+  // Exact code inset via cell margins (not font-dependent spaces).
+  // Outer frame cell already has a small pad; keep gutter+code columns = tableWidth.
+  const gutterW = options.lineNumbers
+    ? Math.max(480, lineNumberGutterTwips(workRows.length, options))
+    : 0
+  const codeColW = options.lineNumbers
+    ? Math.max(600, tableWidth - gutterW)
+    : tableWidth
+  const colWidths = options.lineNumbers ? [gutterW, codeColW] : [codeColW]
+
+  /** @type {InstanceType<typeof TableRow>[]} */
+  const innerCodeRows = workRows.map((row, i) => {
+    /** @type {InstanceType<typeof TableCell>[]} */
+    const cells = []
+    if (options.lineNumbers) {
+      cells.push(new TableCell({
+        borders: CELL_NO_BORDERS,
+        width: { size: gutterW, type: WidthType.DXA },
+        margins: { top: 0, bottom: 0, left: 0, right: 0 },
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.LEFT,
+            spacing,
+            shading,
+            children: [
+              new TextRun({
+                text: `${i + 1}${suffix}  `,
+                font: fontName,
+                size: fontSize,
+                color: lnColor,
+                bold: !!options.forceBold,
+                italics: !!options.forceItalic,
+                noProof: true
+              })
+            ]
+          })
+        ]
+      }))
+    }
+    cells.push(new TableCell({
+      borders: CELL_NO_BORDERS,
+      width: { size: codeColW, type: WidthType.DXA },
+      margins: {
+        top: 0,
+        bottom: 0,
+        left: codeInset,
+        right: codeInset
+      },
+      children: [
+        new Paragraph({
+          alignment: AlignmentType.LEFT,
+          spacing,
+          shading,
+          children: codeTextRuns(row)
+        })
+      ]
+    }))
+    return new TableRow({ children: cells })
+  })
+
+  const innerCodeTable = new Table({
+    width: { size: colWidths.reduce((a, b) => a + b, 0), type: WidthType.DXA },
+    columnWidths: colWidths,
+    rows: innerCodeRows,
+    borders: {
+      top: NIL_BORDER,
+      bottom: NIL_BORDER,
+      left: NIL_BORDER,
+      right: NIL_BORDER,
+      insideHorizontal: NIL_BORDER,
+      insideVertical: NIL_BORDER
+    }
+  })
+
+  /** @param {(InstanceType<typeof Paragraph>|InstanceType<typeof Table>)[]} children */
+  function cell(children, pad) {
     return new TableCell({
       borders: CELL_NO_BORDERS,
       width: { size: tableWidth, type: WidthType.DXA },
@@ -313,17 +348,20 @@ export async function linesToDocxBlob(lines, options) {
         right: pad.right
       },
       verticalAlign: VerticalAlign.CENTER,
-      children: paras
+      children
     })
   }
+
+  // Tiny frame pad only — code↔marker gap lives on the code cell (codeInset).
+  const framePad = { top: 40, bottom: 40, left: 40, right: 40 }
 
   /** @type {InstanceType<typeof TableRow>[]} */
   const tableRows = [
     ...captionParas.map((p) => new TableRow({
-      children: [cell([p], { top: 40, bottom: 40, left: 100, right: 100 })]
+      children: [cell([p], { top: 40, bottom: 40, left: 80, right: 80 })]
     })),
     new TableRow({
-      children: [cell(codeParas, { top: 60, bottom: 60, left: 40, right: 140 })]
+      children: [cell([innerCodeTable], framePad)]
     })
   ]
 

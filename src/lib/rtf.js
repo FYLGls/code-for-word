@@ -1,12 +1,11 @@
 /** RTF paragraphs Word recognizes: \\b / \\cf / \\f / \\fs — not a table. */
 
 import {
-  measureListingTwips,
-  listingSideIndents,
   applyListingStyle,
-  resolveCodeInsetTwips,
+  resolveListingGeometry,
   codeInsetPrefix,
-  codeInsetSuffix
+  codeInsetSuffix,
+  lineNumberGutterTwips
 } from './lines.js'
 import { resolveFrameStyle, rtfParaBorders } from './frame.js'
 import {
@@ -150,10 +149,11 @@ function codeBlockBorders(frame, ac, hasCaption) {
  *  borders: string
  * }} p
  */
-function paraHead({ left, right, linePart, fontSizeHalfPoints, shade, fg, borders }) {
+function paraHead({ left, right, linePart, fontSizeHalfPoints, shade, fg, borders, insetTab }) {
   return (
     `\\pard\\plain\\ql\\hyphpar0\\nowidctlpar` +
     `\\li${left}\\ri${right}\\sa0\\sb0${linePart}` +
+    (insetTab || '') +
     `\\f0\\fs${fontSizeHalfPoints}${shade}\\cf${fg}${borders} `
   )
 }
@@ -203,11 +203,25 @@ export function linesToRtf(lines, options) {
   const capColorHex = resolveCaptionColor(options)
   const capBold = resolveCaptionBold(options)
   const capItalic = resolveCaptionItalic(options)
-  const block = measureListingTwips(rows, options)
-  const { left, right } = listingSideIndents(block, options.sideMarginTwips, options.pageContentTwips)
-  const codeInset = resolveCodeInsetTwips(options.codeInsetTwips, options.pageContentTwips, options.sideMarginTwips)
+  const geo = resolveListingGeometry(
+    options.sideMarginTwips,
+    options.codeInsetTwips,
+    options.pageContentTwips
+  )
+  const left = geo.left
+  const right = geo.right
+  const codeInset = geo.inset
   const insetLeft = codeInsetPrefix(options, codeInset)
   const insetRight = codeInsetSuffix(options, codeInset)
+  // Word \\tx is absolute from the page content edge (same origin as \\li),
+  // so the stop must include left indent + gutter + inset — not inset alone.
+  const gutterTwips = options.lineNumbers
+    ? Math.max(480, lineNumberGutterTwips(Math.max(rows.length, 1), options))
+    : 0
+  const useInsetTab = !!(options.lineNumbers && codeInset > 0)
+  const insetTab = useInsetTab
+    ? `\\tx${left + gutterTwips + codeInset} `
+    : ''
   const linePart = pt >= 16
     ? '\\sl276\\slmult1 '
     : `\\sl${Math.max(240, Math.round(pt * 20 * 1.35))}\\slmult0 `
@@ -251,11 +265,14 @@ export function linesToRtf(lines, options) {
   /** @param {import('../themes.js').StyledRun[]} row @param {number} i */
   function lineContent(row, i) {
     let content = ''
-    // Line numbers stay flush to the left marker; pads sit around the code only.
+    // Line numbers stay flush to the left marker; inset is \\tab (exact) or spaces.
     if (options.lineNumbers) {
       content += `{\\noproof\\f0\\cf${ln}${lnBold}${lnItalic} ${escapeRtf(`${i + 1}${suffix}  `)}}`
-    }
-    if (insetLeft) {
+      if (useInsetTab) content += '\\tab '
+      else if (insetLeft) {
+        content += `{\\noproof\\f0\\cf${fg}\\b0\\i0 ${escapeRtf(insetLeft)}}`
+      }
+    } else if (insetLeft) {
       content += `{\\noproof\\f0\\cf${fg}\\b0\\i0 ${escapeRtf(insetLeft)}}`
     }
     content += codeRuns(row)
@@ -290,7 +307,8 @@ export function linesToRtf(lines, options) {
       fontSizeHalfPoints,
       shade,
       fg,
-      borders: boxBorders
+      borders: boxBorders,
+      insetTab
     })
     const inner = rows.map((row, i) => lineContent(row, i)).join('\\line\n')
     body = `${head}${inner}\\par`
@@ -304,7 +322,8 @@ export function linesToRtf(lines, options) {
         fontSizeHalfPoints,
         shade,
         fg,
-        borders
+        borders,
+        insetTab
       })
       return `${head}${lineContent(row, i)}\\par`
     }).join('\n')

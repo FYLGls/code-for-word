@@ -3,9 +3,8 @@
 import {
   applyListingStyle,
   measureListingTwips,
-  listingSideIndents,
   PAGE_CONTENT_TWIPS,
-  resolveCodeInsetTwips,
+  resolveListingGeometry,
   codeInsetPrefix,
   codeInsetSuffix
 } from './lines.js'
@@ -130,10 +129,17 @@ export function linesToWordHtml(lines, options) {
   const lnWeight = options.forceBold ? 'font-weight:bold;' : ''
   const lnItalic = options.forceItalic ? 'font-style:italic;' : ''
   const block = measureListingTwips(rows, options)
-  const { left, right } = listingSideIndents(block, options.sideMarginTwips, options.pageContentTwips)
-  const codeInset = resolveCodeInsetTwips(options.codeInsetTwips, options.pageContentTwips, options.sideMarginTwips)
+  const geo = resolveListingGeometry(
+    options.sideMarginTwips,
+    options.codeInsetTwips,
+    options.pageContentTwips
+  )
+  const left = geo.left
+  const right = geo.right
+  const codeInset = geo.inset
   const insetLeft = codeInsetPrefix(options, codeInset)
   const insetRight = codeInsetSuffix(options, codeInset)
+  void block
   const preview = !!options.preview
   const showCap = shouldShowCaption(options)
   const fontStack = `${fontName},'Courier New',monospace`

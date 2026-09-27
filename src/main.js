@@ -284,6 +284,7 @@ function fillKeyedSelect(el, options, keep, fallback) {
     el.appendChild(opt)
   }
   el.value = keep || fallback
+  if (![...el.options].some((o) => o.value === el.value)) el.value = fallback
 }
 
 function refillLabeledSelects() {
