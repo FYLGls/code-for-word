@@ -1,0 +1,32 @@
+# -*- coding: utf-8 -*-
+# 数据预处理模块：负责清洗与向量化
+import pandas as pd
+
+def 清洗数据(df):
+    """去除空值与重复行，返回干净的 DataFrame"""
+    df = df.dropna()  # 丢弃缺失值
+    df = df.drop_duplicates()  # 去重
+    print("清洗完成，剩余 %d 行" % len(df))
+    return df
+
+def 向量化(texts):
+    # 使用 TF-IDF 提取特征
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    vectorizer = TfidfVectorizer(max_features=5000)
+    matrix = vectorizer.fit_transform(texts)
+    print(f"特征维度：{matrix.shape[1]}")
+    return matrix, vectorizer
+
+class 分类器:
+    def __init__(self, 模型名="svm"):
+        self.模型名 = 模型名  # 默认支持向量机
+
+    def 训练(self, X, y):
+        print("开始训练", self.模型名)
+        self.model.fit(X, y)
+        return self.model.score(X, y)
+
+if __name__ == "__main__":
+    df = pd.read_csv("数据集.csv")
+    df = 清洗数据(df)
+    print("处理结束")

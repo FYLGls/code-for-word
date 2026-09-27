@@ -32,6 +32,8 @@ function countMatches(text, re) {
 
 /**
  * One line's vote: 'code' | 'text' | '' (abstain).
+ * 代码结构信号（括号/引号/关键字/注释头等）优先于中文占比——
+ * 否则带中文注释或中文字符串的代码会被误判为文本。
  * @param {string} line
  * @returns {'code'|'text'|''}
  */
@@ -40,27 +42,44 @@ export function lineVote(line) {
   if (!trimmed) return ''
   const nonspace = [...trimmed.replace(/\s/g, '')].length
   if (!nonspace) return ''
+
+  // 参考文献条目（[1] 作者. 标题…）与 markdown 表格行不参与代码/文本投票
+  if (/^\s*\[\d{1,3}\]\s/.test(line)) return 'text'
+  if (/^\s*\|.*\|\s*$/.test(line)) return ''
+  // markdown 标题行是文本（# 会被当成脚本注释投代码票）
+  if (/^\s{0,3}#{1,6}\s+\S/.test(line)) return 'text'
+  // markdown 链接 [文字](url) 属于网页复制文本，不因方括号投代码票
+  if (/\[[^\]\n]*\]\([^)\n]+\)/.test(trimmed)) return 'text'
+
   const cjk = countCjk(trimmed)
   const symbols = countMatches(trimmed, CODE_SYMBOL_RE)
-
-  // Strong prose signals
-  if (cjk / nonspace > 0.15) return 'text'
-  if (CJK_PUNCT_END_RE.test(trimmed)) return 'text'
-
-  // English prose: mostly letters, almost no code punctuation, reasonably long
+  const symbolRatio = symbols / nonspace
+  const cjkRatio = cjk / nonspace
   const letters = countMatches(trimmed, /[A-Za-z]/g)
-  if (letters / nonspace > 0.55 && symbols / nonspace < 0.05 && trimmed.length > 25) return 'text'
-
-  // Strong code signals
   const indent = line.match(/^\s+/)?.[0].replace(/\t/g, '    ').length ?? 0
-  if (indent >= 4 && symbols / nonspace > 0.06) return 'code'
-  if (symbols / nonspace > 0.15) return 'code'
-  if (CODE_START_RE.test(line)) return 'code'
-  if (KEYWORD_RE.test(trimmed) && symbols > 0) return 'code'
-  if (/^\s*(\/\/|#|\/\*|\*|--|;;|<!--)/.test(line)) return 'code'
-  if (/[{};]\s*$/.test(trimmed)) return 'code'
-  if (/^\s*(<\/?[a-zA-Z][\w-]*|<!DOCTYPE)/.test(line)) return 'code'
 
+  // 代码结构信号
+  const hasBrackets = /[[\]{}()]/.test(trimmed)
+  const hasQuote = /["'`]/.test(trimmed)
+  const endsCodey = /[{};)\]]\s*$/.test(trimmed)
+  const keywordish = CODE_START_RE.test(line) || (KEYWORD_RE.test(trimmed) && symbols > 0)
+  const commentish = /^\s*(\/\/|#|\/\*|\*|--|;;|<!--)/.test(line)
+  const tagish = /^\s*(<\/?[a-zA-Z][\w-]*|<!DOCTYPE)/.test(line)
+  // 纯符号密度型代码信号（无括号/引号/关键字）对中文行不生效——
+  // 否则 markdown 表格行/实体残留行会被误判为代码
+  const symbolOnlyCode = (symbolRatio >= 0.15 || (indent >= 4 && symbolRatio >= 0.06)) && cjkRatio <= 0.15
+  const structuralCode = hasBrackets || endsCodey || keywordish || commentish || tagish || symbolOnlyCode
+  // 引号+符号密度也能说明代码，但中文占主导的普通引述句除外
+  const quotedCode = hasQuote && symbolRatio >= 0.10 && cjkRatio <= 0.4
+
+  if (structuralCode || quotedCode) return 'code'
+
+  // 散文信号
+  if (cjkRatio > 0.15) return 'text'
+  if (CJK_PUNCT_END_RE.test(trimmed)) return 'text'
+  if (letters / nonspace > 0.55 && symbolRatio < 0.05 && trimmed.length > 25) return 'text'
+
+  if (symbolRatio >= 0.08) return 'code'
   return ''
 }
 
@@ -105,9 +124,12 @@ export function findFences(lines) {
 
 /**
  * @param {string} text
+ * @param {{ autoDetect?: (code: string) => { language?: string, relevance?: number } | null }} [signal]
+ *   可选 highlight.js 自动检测信号：结构识别不受中文注释/字符串干扰，
+ *   相关度足够高时作为"代码"的加权依据。
  * @returns {{ kind: 'code'|'text'|'mixed', codeVotes: number, textVotes: number, fenceCount: number }}
  */
-export function detectKind(text) {
+export function detectKind(text, signal) {
   const normalized = String(text ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const lines = normalized.split('\n')
   const fences = findFences(lines)
@@ -134,9 +156,21 @@ export function detectKind(text) {
   if (codeVotes + textVotes === 0) {
     return { kind: 'text', codeVotes, textVotes, fenceCount: 0 }
   }
-  const totalVotes = codeVotes + textVotes
-  const codeShare = codeVotes / totalVotes
   let kind = 'text'
+  const codeShare = codeVotes / (codeVotes + textVotes)
   if (codeShare >= 0.6) kind = 'code'
+
+  // hljs 结构信号兜底：短片段或中文注释/字符串密集的代码投票接近时，交给语法识别。
+  // 门槛要高——hljs 对 markdown/散文也会给出低相关度的语言猜测（如 csharp relevance 8）
+  if (kind !== 'code' && signal?.autoDetect) {
+    try {
+      const r = signal.autoDetect(normalized)
+      if (r && r.language && r.language !== 'plaintext' && (r.relevance ?? 0) >= 15 && codeShare >= 0.5) {
+        kind = 'code'
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   return { kind, codeVotes, textVotes, fenceCount: 0 }
 }

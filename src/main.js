@@ -911,7 +911,17 @@ function buildPaperFromSource() {
 function renderPreview() {
   const code = els.source.value
   if (code.trim()) {
-    textDetect = detectKind(code).kind
+    // hljs 结构信号兜底：中文注释/字符串密集的代码不受启发式误判
+    textDetect = detectKind(code, {
+      autoDetect: (src) => {
+        try {
+          const r = hljs.highlightAuto(src)
+          return { language: r.language, relevance: r.relevance }
+        } catch {
+          return null
+        }
+      }
+    }).kind
   }
   const eff = effectiveMode()
   const { lines, chars } = countStats(code)

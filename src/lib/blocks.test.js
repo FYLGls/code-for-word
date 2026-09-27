@@ -6,6 +6,9 @@ import {
   blocksToPlainText,
   resolveSchemeId
 } from './blocks.js'
+import { detectKind } from './detect.js'
+
+const detectKindOf = (s) => detectKind(s).kind
 
 describe('parseMarker', () => {
   it('parses chinese official markers', () => {
@@ -176,6 +179,272 @@ describe('parseBlocks', () => {
     expect(blocks[0].kind).toBe('heading')
     expect(blocks[0].level).toBe(1)
     expect(blocks[0].text).toBe('实验结果')
+  })
+
+  it('parses an english journal paper with title and references', () => {
+    const src = [
+      'A Survey of Lightweight Models for Text Classification',
+      '',
+      'Abstract',
+      '',
+      'Text classification is a fundamental task.',
+      'Recent advances have changed this landscape.',
+      '',
+      '1 Introduction',
+      '',
+      'Deep learning has improved performance.',
+      '',
+      'References',
+      '',
+      '[1] Devlin J, et al. BERT: Pre-training of deep bidirectional transformers[C]. NAACL, 2019: 4171-4186.',
+      '[2] Hinton G, et al. Distilling the knowledge in a neural network[J]. arXiv, 2015.'
+    ].join('\n')
+    const blocks = renumberBlocks(parseBlocks(src), 'academic')
+    expect(blocks[0].kind).toBe('title')
+    expect(blocks[0].text).toContain('A Survey')
+    expect(blocks.map((b) => b.kind)).toEqual([
+      'title', 'heading', 'paragraph', 'heading', 'paragraph', 'heading', 'ref', 'ref'
+    ])
+    expect(blocks[1].unnumbered).toBe(true)
+    expect(blocks[5].unnumbered).toBe(true) // References 不编号
+    expect(blocks[6].text).toContain('[1] Devlin')
+  })
+
+  it('parses a chinese thesis with spaced section names and formulas', () => {
+    const src = [
+      '基于深度学习的中文文本分类方法研究',
+      '',
+      '摘  要',
+      '',
+      '随着互联网技术的快速发展，网络文本数据呈爆炸式增长。',
+      '如何高效地对海量文本进行自动分类已成为重要课题。',
+      '',
+      '关键词：文本分类；深度学习',
+      '',
+      'Abstract',
+      '',
+      'This paper proposes an end-to-end method.',
+      '',
+      'Key words: text classification; deep learning',
+      '',
+      '第1章 绪论',
+      '',
+      '文本分类是基础任务之一。',
+      '',
+      '1.2 研究现状',
+      '',
+      '早期研究采用传统方法。',
+      '',
+      '1.2.1 中文预训练模型',
+      '',
+      '中文场景下涌现了多个预训练模型。',
+      '',
+      '$$Attention(Q, K, V) = softmax(QK^T)V$$',
+      '',
+      '表 3-1 不同模型性能对比',
+      '',
+      '参考文献',
+      '',
+      '[1] 张三, 李四. 基于BERT的文本分类研究[J]. 计算机学报, 2023.'
+    ].join('\n')
+    const blocks = renumberBlocks(parseBlocks(src), 'thesis')
+    expect(blocks[0].kind).toBe('title')
+    expect(blocks[1].unnumbered).toBe(true) // 摘  要（带空格）识别为栏目
+    expect(blocks[2].kind).toBe('paragraph') // 摘要两句合并
+    expect(blocks.find((b) => b.kind === 'formula')?.text).toContain('Attention')
+    expect(blocks.filter((b) => b.kind === 'caption').map((b) => b.text))
+      .toEqual(['表 3-1 不同模型性能对比'])
+    const chapter = blocks.find((b) => b.number === '第1章')
+    expect(chapter?.text).toBe('绪论')
+    // 编号按位置归一：原文 1.2/1.2.1 是本章第一组 → 重排为 1.1/1.1.1
+    expect(blocks.find((b) => b.number === '1.1')?.text).toBe('研究现状')
+    expect(blocks.find((b) => b.number === '1.1.1')?.text).toBe('中文预训练模型')
+  })
+
+  it('parses an official document with full numbering cascade and signoff', () => {
+    const src = [
+      '关于进一步加强经费管理的通知',
+      '',
+      '各部门、各学院：',
+      '',
+      '为进一步规范经费使用，现就有关事项通知如下。',
+      '',
+      '一、总体要求',
+      '',
+      '（一）落实主体责任',
+      '',
+      '1. 建立经费使用台账',
+      '2. 定期开展自查自纠',
+      '',
+      '二、具体措施',
+      '',
+      '1. 预算编制应当科学合理，符合项目研究计划。',
+      '2. 预算调整应当按照规定程序报批。',
+      '',
+      '（1）单项调整超过百分之二十的，须经审核。',
+      '（2）涉及科目间调剂的，应当履行备案手续。',
+      '',
+      '特此通知。',
+      '',
+      '××大学',
+      '2026年3月15日'
+    ].join('\n')
+    const blocks = renumberBlocks(parseBlocks(src), 'official')
+    expect(blocks[0].kind).toBe('title')
+    expect(blocks[1].kind).toBe('paragraph') // 各部门、各学院：
+    const headings = blocks.filter((b) => b.kind === 'heading')
+    expect(headings.map((b) => b.number)).toEqual(['一、', '（一）', '1.', '2.', '二、'])
+    // 带句号的数字/括号列表 → 条目
+    const items = blocks.filter((b) => b.kind === 'item')
+    expect(items.length).toBe(4)
+    // 落款右对齐
+    const signoffs = blocks.filter((b) => b.kind === 'signoff')
+    expect(signoffs.map((b) => b.text)).toEqual(['××大学', '2026年3月15日'])
+  })
+
+  it('parses web-copied markdown with pipe tables and html entities', () => {
+    const src = [
+      '# Transformer 模型对比',
+      '',
+      '实验环境为&nbsp;RTX 4090&amp;128G&nbsp;内存。',
+      '',
+      '| 模型 | 参数量 | 层数 |',
+      '| --- | --- | --- |',
+      '| BERT-base | 110M | 12 |',
+      '| BERT-large | 340M | 24 |',
+      '',
+      '详见[论文原文](https://example.com/paper)。'
+    ].join('\n')
+    const blocks = parseBlocks(src)
+    expect(blocks[0]).toMatchObject({ kind: 'heading', level: 1, text: 'Transformer 模型对比' })
+    expect(blocks[1].text).toContain('RTX 4090&128G 内存')
+    const table = blocks.find((b) => b.kind === 'table')
+    expect(table.header).toEqual(['模型', '参数量', '层数'])
+    expect(table.rows).toEqual([['BERT-base', '110M', '12'], ['BERT-large', '340M', '24']])
+    expect(blocks[blocks.length - 1].text).toContain('论文原文')
+    expect(detectKindOf(src)).toBe('text')
+  })
+
+  it('parses algorithm pseudo-code blocks', () => {
+    const src = [
+      '本节给出训练流程，如算法 1 所示。',
+      '',
+      '算法 1: 基于对比学习的联合训练',
+      '',
+      '输入: 训练集 D, 学习率 η',
+      '输出: 模型参数 θ',
+      '',
+      '1: 初始化参数 θ',
+      '2: for epoch = 1 to E do',
+      '3:     计算损失 L',
+      '4: end for',
+      '5: return θ',
+      '',
+      '算法收敛性见定理 1。'
+    ].join('\n')
+    const blocks = parseBlocks(src)
+    expect(blocks.map((b) => b.kind)).toEqual(['paragraph', 'caption', 'code', 'paragraph'])
+    expect(blocks[1].text).toContain('算法 1')
+    expect(blocks[2].code.split('\n')).toHaveLength(7) // 输入/输出与步骤行合并
+    expect(blocks[2].code).toContain('5: return θ')
+  })
+
+  it('itemizes outline-style content with various bullets', () => {
+    const src = [
+      '项目验收汇报提纲',
+      '',
+      '- 项目背景与目标',
+      '- 总体架构',
+      '  · Vue 3 + TypeScript',
+      '  · Element Plus 组件库',
+      '',
+      '进度安排',
+      '',
+      '一、需求分析阶段',
+      '二、开发实施阶段',
+      '',
+      '交付物列表',
+      '',
+      '‣ 需求规格说明书',
+      '‣ 测试报告',
+      '⁃ 用户手册'
+    ].join('\n')
+    const blocks = renumberBlocks(parseBlocks(src), 'academic')
+    expect(blocks[0].kind).toBe('heading') // 提纲
+    expect(blocks[5].kind).toBe('heading') // 进度安排
+    expect(blocks[8].kind).toBe('heading') // 交付物列表
+    const items = blocks.filter((b) => b.kind === 'item')
+    expect(items.length).toBe(9) // 4（含缩进 ·）+ 2（一、二、）+ 3（‣ ⁃）
+    expect(items.some((b) => b.text === 'Vue 3 + TypeScript')).toBe(true) // 缩进 · bullet
+  })
+
+  it('parses a kitchen-sink paper with every element type', () => {
+    const src = [
+      '基于混合架构的智能问答系统设计与实现',
+      '',
+      '摘  要',
+      '',
+      '本文设计了基于混合架构的问答系统。',
+      '实验表明准确率达到 92.4%，提升 __7.8 个百分点__。',
+      '',
+      '关键词：智能问答；知识图谱',
+      '',
+      '第1章 绪论',
+      '',
+      '1.2 主要挑战',
+      '',
+      '- 领域知识更新滞后',
+      '- 生成内容存在幻觉',
+      '',
+      '第2章 系统设计',
+      '',
+      '核心接口实现如下：',
+      '',
+      '```python',
+      'def 检索(query):',
+      '    return index.search(encoder.encode(query))',
+      '```',
+      '',
+      '算法 1: 实体抽取',
+      '',
+      '输入: 文本 T',
+      '',
+      '1: for 文档 in T do',
+      '2:     抽取实体',
+      '3: end for',
+      '',
+      '表 2-1 组件配置',
+      '',
+      '| 组件 | 模型 |',
+      '| --- | --- |',
+      '| 编码器 | BGE |',
+      '',
+      '$$Attention(Q, K, V) = softmax(QK^T)V$$',
+      '',
+      '（1）基线一准确率 76.5%。',
+      '（2）本文方法准确率 92.4%。',
+      '',
+      '图 3-1 错误类型分布',
+      '',
+      '参考文献',
+      '',
+      '[1] 张三. 问答系统综述[J]. 计算机学报, 2024.',
+      '',
+      '××大学',
+      '2026年6月1日'
+    ].join('\n')
+    const blocks = renumberBlocks(parseBlocks(src), 'thesis')
+    const shape = blocks.map((b) => b.kind)
+    expect(shape).toEqual([
+      'title', 'heading', 'paragraph', 'paragraph',
+      'heading', 'heading', 'item', 'item',
+      'heading', 'paragraph', 'code',
+      'caption', 'code',
+      'caption', 'table', 'formula',
+      'item', 'item', 'caption',
+      'heading', 'ref', 'signoff', 'signoff'
+    ])
+    expect(detectKindOf(src)).toBe('mixed')
   })
 
   it('normalizes a messy PDF-copied paper end to end', () => {

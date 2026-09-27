@@ -182,6 +182,24 @@ describe('buildPaperModel', () => {
 })
 
 describe('paperParasToPlainText', () => {
+  it('flattens tables and keeps code lines together in plain text', () => {
+    const src = [
+      '说明文字。',
+      '',
+      '| 名称 | 数值 |',
+      '| --- | --- |',
+      '| 甲 | 1 |',
+      '| 乙 | 2 |',
+      '',
+      '```js',
+      'let a = 1',
+      '```'
+    ].join('\n')
+    const paras = buildPaperModel(parseBlocks(src), { highlight: stubHighlight })
+    const text = paperParasToPlainText(paras)
+    expect(text).toBe('说明文字。\n\n名称 | 数值\n甲 | 1\n乙 | 2\n\n代码 1\nlet a = 1')
+  })
+
   it('flattens paragraphs and keeps code lines together', () => {
     const src = ['1 引言', '', '正文。', '', '```js', 'let a = 1', 'let b = 2', '```'].join('\n')
     const paras = buildPaperModel(renumberBlocks(parseBlocks(src), 'academic'), { highlight: stubHighlight })

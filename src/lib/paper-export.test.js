@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { parseBlocks, renumberBlocks } from './blocks.js'
 import { buildPaperModel } from './paper-format.js'
 import { paperToRtf, paperToWordHtml, paperToDocxBlob, groupCodeParas } from './paper-export.js'
+import { escapeRtf } from './rtf.js'
 
 const stubHighlight = (code) => code.split('\n').map((l) => [{ text: l, color: '#000000' }])
 
@@ -57,6 +58,37 @@ describe('paperToRtf', () => {
     const capHtml = paperToWordHtml(capParas, { preview: true })
     expect(capHtml).toContain('paper-caption')
     expect(capHtml).toContain('text-align:center')
+  })
+
+  it('renders signoff right-aligned and markdown tables in all exporters', async () => {
+    const src = ['说明。',
+      '',
+      '| 名称 | 数值 |',
+      '| --- | --- |',
+      '| 甲 | 1 |',
+      '',
+      '××大学', '2026年6月1日'].join('\n')
+    const paras = buildPaper(src)
+
+    const rtf = paperToRtf(paras)
+    expect(rtf).toContain('\\qr') // 落款右对齐
+    expect(rtf).toContain('\\trowd') // 表格行
+    expect(rtf).toContain('\\cell') // 单元格
+    expect(rtf).toContain(escapeRtf('名称')) // 中文单元格以 \u 转义存在
+
+    const html = paperToWordHtml(paras, { preview: true })
+    expect(html).toContain('text-align:right')
+    expect(html).toContain('paper-table')
+    expect(html).toContain('<th')
+
+    const blob = await paperToDocxBlob(paras, { paperId: 'a4' })
+    const arrayBuffer = await blob.arrayBuffer()
+    const { default: JSZip } = await import('jszip')
+    const zip = await JSZip.loadAsync(arrayBuffer)
+    const xml = await zip.file('word/document.xml').async('string')
+    expect(xml).toContain('w:val="right"')
+    expect(xml).toContain('<w:tbl>')
+    expect(xml).toContain('名称')
   })
 
   it('emits box frame as single multi-line paragraph', () => {

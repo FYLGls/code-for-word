@@ -87,6 +87,43 @@ describe('detectKind', () => {
     expect(detectKind(code).kind).toBe('code')
   })
 
+  it('classifies code with chinese comments/strings as code', () => {
+    const code = [
+      '# 数据预处理模块',
+      'import pandas as pd',
+      '',
+      'def 清洗数据(df):',
+      '    df = df.dropna()  # 丢弃缺失值',
+      '    print("清洗完成，剩余 %d 行" % len(df))',
+      '    return df',
+      '',
+      'if __name__ == "__main__":',
+      '    df = pd.read_csv("数据集.csv")',
+      '    print("处理结束")'
+    ].join('\n')
+    const r = detectKind(code)
+    expect(r.kind).toBe('code')
+  })
+
+  it('still classifies chinese prose as text', () => {
+    const text = [
+      '结果表明，该方法准确率达到 95%，显著优于基线。',
+      '其中"预训练"策略贡献最大。',
+      '此外，推理速度也有明显提升。'
+    ].join('\n')
+    expect(detectKind(text).kind).toBe('text')
+  })
+
+  it('uses an injected hljs signal for borderline snippets', () => {
+    const snippet = 'x = score * 0.8 + bonus\n最终结果以百分比形式输出并写入报表'
+    const weak = detectKind(snippet)
+    const boosted = detectKind(snippet, {
+      autoDetect: () => ({ language: 'python', relevance: 20 })
+    })
+    expect(weak.kind).toBe('text')
+    expect(boosted.kind).toBe('code')
+  })
+
   it('defaults empty input to text', () => {
     expect(detectKind('').kind).toBe('text')
   })

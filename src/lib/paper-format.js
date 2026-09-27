@@ -23,8 +23,10 @@ const PT_TO_TWIPS = 20
 
 /**
  * @typedef {object} PaperPara
- * @property {'heading'|'body'|'item'|'code'|'codeCaption'|'caption'|'ref'} kind
+ * @property {'heading'|'body'|'item'|'code'|'codeCaption'|'caption'|'ref'|'title'|'formula'|'signoff'|'table'} kind
  * @property {PaperRun[]} runs
+ * @property {string[]} [header] 表格表头（kind === 'table'）
+ * @property {string[][]} [rows] 表格数据行（kind === 'table'）
  * @property {string} fontName
  * @property {number} fontSizePt
  * @property {'left'|'center'|'justify'} align
@@ -59,6 +61,7 @@ export const PAPER_DEFAULTS = {
   bodyUnderline: false,
   captionSizePt: 10.5,
   refSizePt: 10.5,
+  titleSizePt: 18,
   translations: null, // Map<blockIndex, string>
   translateOutput: 'original', // original | translated | bilingual
   codeCaption: true,
@@ -159,6 +162,30 @@ export function buildPaperModel(blocks, options = {}) {
 
   let codeSeq = 0
   blocks.forEach((b, i) => {
+    if (b.kind === 'title') {
+      const translation = opts.translations ? opts.translations.get(i) : null
+      const pushTitle = (body) => paras.push({
+        kind: 'title',
+        runs: parseInline(body).map((r) => ({ ...r, bold: true })),
+        fontName: opts.headingFont,
+        fontSizePt: opts.titleSizePt,
+        align: 'center',
+        firstLineTwips: 0,
+        leftIndentTwips: 0,
+        beforeTwips: 0,
+        afterTwips: ptTwips(18),
+        lineMultiple: opts.lineSpacing
+      })
+      if (opts.translateOutput === 'translated' && translation != null) {
+        pushTitle(translation)
+      } else {
+        pushTitle(b.text)
+        if (opts.translateOutput === 'bilingual' && translation != null) {
+          pushTitle(translation)
+        }
+      }
+      return
+    }
     if (b.kind === 'heading') {
       const spec = headingSpec[Math.min(Math.max(b.level ?? 1, 1), 3)]
       const center = b.unnumbered || (centerL1 && (b.level ?? 1) === 1)
@@ -189,6 +216,55 @@ export function buildPaperModel(blocks, options = {}) {
           pushHeading(joinWithNumber(translation))
         }
       }
+      return
+    }
+    if (b.kind === 'formula') {
+      // 独立公式：居中、正体、保留 $$ 原文（Word 里可用公式编辑器替换）
+      paras.push({
+        kind: 'formula',
+        runs: [{ text: b.text }],
+        fontName: opts.bodyFont,
+        fontSizePt: opts.bodySizePt,
+        align: 'center',
+        firstLineTwips: 0,
+        leftIndentTwips: 0,
+        beforeTwips: ptTwips(3),
+        afterTwips: ptTwips(3),
+        lineMultiple: opts.lineSpacing
+      })
+      return
+    }
+    if (b.kind === 'table') {
+      paras.push({
+        kind: 'table',
+        runs: [],
+        header: b.header || [],
+        rows: b.rows || [],
+        fontName: opts.bodyFont,
+        fontSizePt: Math.min(opts.bodySizePt, 12),
+        align: 'left',
+        firstLineTwips: 0,
+        leftIndentTwips: 0,
+        beforeTwips: ptTwips(6),
+        afterTwips: ptTwips(6),
+        lineMultiple: opts.lineSpacing
+      })
+      return
+    }
+    if (b.kind === 'signoff') {
+      // 落款（机构/日期）：右对齐
+      paras.push({
+        kind: 'signoff',
+        runs: parseInline(b.text),
+        fontName: opts.bodyFont,
+        fontSizePt: opts.bodySizePt,
+        align: 'right',
+        firstLineTwips: 0,
+        leftIndentTwips: 0,
+        beforeTwips: ptTwips(6),
+        afterTwips: 0,
+        lineMultiple: opts.lineSpacing
+      })
       return
     }
     if (b.kind === 'caption') {
@@ -287,7 +363,16 @@ export function paperParasToPlainText(paras) {
   let prevGroup = ''
   for (const p of paras) {
     const text = p.runs.map((r) => r.text).join('')
-    if (!text.trim()) continue
+    if (!text.trim() && p.kind !== 'table') continue
+    if (p.kind === 'table') {
+      const cells = [
+        ...(p.header?.length ? [p.header.join(' | ')] : []),
+        ...(p.rows || []).map((r) => r.join(' | '))
+      ]
+      parts.push(cells.join('\n'))
+      prevGroup = ''
+      continue
+    }
     if ((p.kind === 'code' || p.kind === 'codeCaption') && p.groupId === prevGroup) {
       parts[parts.length - 1] += `\n${text}`
     } else {

@@ -11,6 +11,7 @@ import { tableBorders, resolveDocxPageSetup } from './docx.js'
 import { FONT_OPTIONS } from '../themes.js'
 import {
   AlignmentType,
+  BorderStyle,
   Document,
   LineRuleType,
   Packer,
@@ -136,7 +137,7 @@ export function paperToRtf(paras, options = {}) {
    * @param {string} extraShade
    */
   const paraHead = (p, borders = '', extraShade = '') => {
-    const align = p.align === 'center' ? '\\qc' : p.align === 'justify' ? '\\qj' : '\\ql'
+    const align = p.align === 'center' ? '\\qc' : p.align === 'justify' ? '\\qj' : p.align === 'right' ? '\\qr' : '\\ql'
     const linePart = p.lineMultiple != null
       ? `\\sl${Math.round(240 * p.lineMultiple)}\\slmult1`
       : `\\sl${Math.max(240, Math.round(p.fontSizePt * 20 * 1.35))}\\slmult0`
@@ -166,6 +167,12 @@ export function paperToRtf(paras, options = {}) {
   let i = 0
   while (i < paras.length) {
     const p = paras[i]
+
+    if (p.kind === 'table') {
+      out.push(rtfTable(p, indexOf))
+      i += 1
+      continue
+    }
 
     if (p.kind === 'code' && p.groupId) {
       // 收集同组代码段（含前置题注已在上方输出）
@@ -224,6 +231,40 @@ function boxBorders(ac) {
   return `\\brdrt${s}\\brdrl${s}\\brdrr${s}\\brdrb${s}`
 }
 
+// ————————————————— 表格（markdown 管道表 → Word 表格）—————————————————
+
+const TABLE_TOTAL_TWIPS = 9360 // A4 内容宽近似值（剪贴板 RTF 无页面设置）
+
+/** @param {PaperPara} p @param {(hex: string) => number} indexOfColor */
+function rtfTable(p, indexOfColor) {
+  const cols = Math.max(p.header?.length || 0, ...(p.rows || []).map((r) => r.length), 1)
+  const colW = Math.floor(TABLE_TOTAL_TWIPS / cols)
+  const cellx = Array.from({ length: cols }, (_, i) => `\\cellx${colW * (i + 1)}`).join('')
+  const borderAll = ('\\clbrdrt\\brdrs\\brdrw10\\clbrdrb\\brdrs\\brdrw10\\clbrdrl\\brdrs\\brdrw10\\clbrdrr\\brdrs\\brdrw10').repeat(cols)
+  const fs = Math.round(p.fontSizePt * 2)
+  const fg = indexOfColor('#000000')
+
+  const headerRow = p.header?.length
+    ? `\\trowd\\trgaph60\\trleft0${borderAll}${cellx}${p.header.map((c) => `{\\intbl\\b\\f0\\fs${fs}\\cf${fg} ${escapeRtf(c ?? '')}\\cell}`).join('')}\\row`
+    : ''
+  const bodyRows = (p.rows || []).map((r) => `\\trowd\\trgaph60\\trleft0${borderAll}${cellx}${r.map((c) => `{\\intbl\\f0\\fs${fs}\\cf${fg}\\b0 ${escapeRtf(c ?? '')}\\cell}`).join('')}\\row`)
+  return [headerRow, ...bodyRows].filter(Boolean).join('\n')
+}
+
+/** @param {PaperPara} p @param {boolean} preview */
+function tableHtml(p, preview) {
+  const border = 'border:1px solid #666;'
+  const th = (p.header || []).map((c) =>
+    `<th style="${border}padding:3pt 6pt;background:#EEF1F4;font-family:${cssFontStack(p.fontName)};font-size:${p.fontSizePt}pt;text-align:left;">${escapeHtml(c ?? '')}</th>`).join('')
+  const trs = (p.rows || []).map((r) =>
+    `<tr>${r.map((c) => `<td style="${border}padding:3pt 6pt;font-family:${cssFontStack(p.fontName)};font-size:${p.fontSizePt}pt;">${escapeHtml(c ?? '')}</td>`).join('')}</tr>`).join('')
+  const head = th ? `<tr>${th}</tr>` : ''
+  const style = preview
+    ? 'border-collapse:collapse;margin:6pt 0;width:100%;table-layout:fixed;'
+    : 'border-collapse:collapse;margin:6pt 0;width:100%;table-layout:fixed;mso-table-lspace:0pt;mso-table-rspace:0pt;'
+  return `<table class="paper-table" style="${style}">${head}${trs}</table>`
+}
+
 // ————————————————— Word HTML（预览 / 粘贴）—————————————————
 
 /**
@@ -265,6 +306,10 @@ export function paperToWordHtml(paras, options = {}) {
   })
 
   for (const p of paras) {
+    if (p.kind === 'table') {
+      parts.push(tableHtml(p, preview))
+      continue
+    }
     if (p.kind === 'code' && p.groupId) {
       if (seenGroups.has(p.groupId)) continue
       seenGroups.add(p.groupId)
@@ -290,7 +335,7 @@ export function paperToWordHtml(paras, options = {}) {
 
 /** @param {PaperPara} p @param {boolean} preview */
 function textParaHtml(p, preview) {
-  const align = p.align === 'center' ? 'center' : p.align === 'justify' ? 'justify' : 'left'
+  const align = p.align === 'center' ? 'center' : p.align === 'justify' ? 'justify' : p.align === 'right' ? 'right' : 'left'
   const indent = p.firstLineTwips !== 0 ? `text-indent:${(p.firstLineTwips / 20).toFixed(1)}pt;` : ''
   const padLeft = p.leftIndentTwips > 0 ? `padding-left:${(p.leftIndentTwips / 20).toFixed(1)}pt;` : ''
   const before = p.beforeTwips > 0 ? `margin-top:${(p.beforeTwips / 20).toFixed(1)}pt;` : 'margin-top:0;'
@@ -349,7 +394,8 @@ export async function paperToDocxBlob(paras, options = {}) {
   const alignMap = {
     left: AlignmentType.LEFT,
     center: AlignmentType.CENTER,
-    justify: AlignmentType.JUSTIFIED
+    justify: AlignmentType.JUSTIFIED,
+    right: AlignmentType.RIGHT
   }
 
   /** @param {PaperPara} p @param {string[]} [extraParents] */
@@ -413,11 +459,48 @@ export async function paperToDocxBlob(paras, options = {}) {
     })
   }
 
+  /** 表格：所有单元格单线边框、表头加粗底纹 */
+  const tablePara = (p) => {
+    const cols = Math.max(p.header?.length || 0, ...(p.rows || []).map((r) => r.length), 1)
+    const colW = Math.floor(page.contentWidth / cols)
+    const fs = Math.round(p.fontSizePt * 2)
+    const edge = { style: BorderStyle.SINGLE, size: 4, color: '666666', space: 0 }
+    const cellBorders = { top: edge, bottom: edge, left: edge, right: edge }
+    const mkCell = (text, bold, shaded) => new TableCell({
+      borders: cellBorders,
+      width: { size: colW, type: WidthType.DXA },
+      margins: { top: 40, bottom: 40, left: 80, right: 80 },
+      shading: shaded ? { type: ShadingType.CLEAR, fill: 'EEF1F4' } : undefined,
+      children: [new Paragraph({
+        alignment: AlignmentType.LEFT,
+        spacing: { before: 0, after: 0, line: 240, lineRule: LineRuleType.AUTO },
+        children: [new TextRun({ text: text ?? '', font: p.fontName, size: fs, bold, noProof: false })]
+      })]
+    })
+    const rows = []
+    if (p.header?.length) {
+      rows.push(new TableRow({ children: p.header.map((c) => mkCell(c, true, true)) }))
+    }
+    for (const r of p.rows || []) {
+      rows.push(new TableRow({ children: r.map((c) => mkCell(c, false, false)) }))
+    }
+    return new Table({
+      width: { size: page.contentWidth, type: WidthType.DXA },
+      columnWidths: Array.from({ length: cols }, () => colW),
+      rows
+    })
+  }
+
   /** @type {InstanceType<typeof Paragraph>[] | InstanceType<typeof Table>[]} */
   const children = []
   let i = 0
   while (i < paras.length) {
     const p = paras[i]
+    if (p.kind === 'table') {
+      children.push(tablePara(p))
+      i += 1
+      continue
+    }
     if (p.kind === 'code' && p.groupId) {
       const groupId = p.groupId
       /** @type {PaperPara[]} */

@@ -41,9 +41,18 @@ export const LANG_ALIASES = {
   htm: 'html'
 }
 
-// 独立成行时识别为固定栏目的名称
-const NAMED_UNNUMBERED = /^(摘要|内容摘要|文章摘要|中英文摘要|英文摘要|abstract|关键词|keywords|参考文献|致谢|谢辞|目录|声明|附录[0-9A-Za-z两二三四五六七八九十]?|后记)$/i
-const NAMED_NUMBERED = /^(引言|绪论|前言|结论|总结|结语|结尾|正文|方法|实验|结果|讨论|相关工作|研究背景|研究意义|技术路线)$/i
+// 独立成行时识别为固定栏目的名称（中英双语）
+// 栏目名匹配（内部空白已压缩，兼容论文排版“摘  要”“参 考 文 献”）
+const NAMED_UNNUMBERED_SQUEEZED = /^(摘要|内容摘要|文章摘要|中英文摘要|英文摘要|abstract|关键词|keywords|参考文献|references|bibliography|acknowledgements?|acknowledgments?|致谢|谢辞|目录|声明|附录[0-9A-Za-z两二三四五六七八九十]?|后记)$/i
+const NAMED_NUMBERED_SQUEEZED = /^(引言|绪论|前言|结论|总结|结语|结尾|正文|方法|实验|结果|讨论|相关工作|研究背景|研究意义|技术路线)$/i
+
+/** 栏目名匹配压缩内部空白，兼容论文排版“摘  要”“参 考 文 献” */
+function matchNamedUnnumbered(s) {
+  return NAMED_UNNUMBERED_SQUEEZED.test(String(s).replace(/\s+/g, ''))
+}
+function matchNamedNumbered(s) {
+  return NAMED_NUMBERED_SQUEEZED.test(String(s).replace(/\s+/g, ''))
+}
 
 const CN_NUM = '一二三四五六七八九十'
 
@@ -53,15 +62,20 @@ const RE = {
   section: /^第\s*([0-9一二三四五六七八九十百]+)\s*节\s*(.*)$/,
   cnTop: /^([一二三四五六七八九十]{1,3})\s*[、.．]\s*(.+)$/,
   cnParen: /^[（(]([一二三四五六七八九十]{1,3})[)）]\s*[、.．]?\s*(.+)$/,
-  dotted: /^(\d{1,2}(?:\.\d{1,3}){0,3})[.、．]?\s+([^\s].*)$/,
+  dotted: /^(\d{1,2}(?:\.\d{1,3}){0,3})([.、．])?\s+([^\s].*)$/,
   parenNum: /^[（(](\d{1,3})[)）]\s*[、.．]?\s*(.+)$/,
   numParen: /^(\d{1,3})[)）]\s*[、.．]?\s*(.+)$/,
   latinParen: /^[（(]([a-zA-Z])[)）]\s*[、.．]?\s*(.+)$/,
   latinDot: /^([a-zA-Z])[.、．]\s+([^\s].*)$/,
-  bullet: /^[-•·▪◦*+>]\s+(.+)$/,
+  bullet: /^\s*[-•·▪◦*+>–—‣⁃]\s+(.+)$/,
   ref: /^\[\d{1,3}\]\s*[、.．]?\s*(.+)$/,
-  caption: /^(图|表|Figure|Fig\.?|Table)\s*(\d{1,3})\s*[：:.．]?\s*(.*)$/i,
-  emphasis: /^\*\*(.+?)\*\*$/
+  refLike: /^\s*\[\d{1,3}\]\s/,
+  caption: /^(图|表|Figure|Fig\.?|Table)\s*(\d{1,3}(?:[-–]\d{1,3})?)\s*[：:.．]?\s*(.*)$/i,
+  emphasis: /^\*\*(.+?)\*\*$/,
+  formula: /^\$\$(.+)\$\$$/,
+  algoCaption: /^(算法|Algorithm)\s*\d{1,3}\s*[:：.．]?\s*(.*)$/i,
+  algoStep: /^\s*\d{1,3}:\s/,
+  algoIO: /^\s*(输入|输出|Input|Output)\s*[:：]/i
 }
 
 const ENDING_PUNCT = /[。．！？；，、：…”』」）》]/
@@ -90,6 +104,12 @@ export function parseMarker(line) {
     return { level: -2, text: s, marker: 'caption' }
   }
 
+  // 算法题注：算法 1: xxx / Algorithm 1（保留原文，居中）
+  const algo = s.match(RE.algoCaption)
+  if (algo && algo[2].trim()) {
+    return { level: -2, text: s, marker: 'caption' }
+  }
+
   const md = s.match(RE.md)
   if (md) return { level: Math.min(md[1].length, 3), text: md[2].trim(), marker: 'md' }
 
@@ -105,10 +125,12 @@ export function parseMarker(line) {
 
   const dotted = s.match(RE.dotted)
   if (dotted) {
-    const rest = dotted[2].trim()
-    // 标题不以句末标点收尾："1.5 小时即可完成训练。"是句子不是编号
-    if (rest && !ENDING_PUNCT.test(rest)) {
-      return { level: segsOf(dotted[1]).length, text: rest, marker: 'dotted' }
+    const rest = dotted[3].trim()
+    const explicitListPunct = !!dotted[2] // "1." / "1、" 形式 = 列表标记，不受句末标点限制
+    if (rest && (explicitListPunct || !ENDING_PUNCT.test(rest))) {
+      const out = { level: dotted[1].split('.').length, text: rest, marker: 'dotted' }
+      if (explicitListPunct) out.listish = true
+      return out
     }
   }
 
@@ -178,10 +200,10 @@ function joinLines(lines) {
  * @returns {Unit[]}
  */
 function splitGroupToUnits(lines, splitMode = 'auto', proseContext = false, listHint = false) {
-  const anyMarker = lines.some((l) => parseMarker(l))
+  const anyMarker = lines.some((l) => parseMarker(l) || RE.formula.test(l.trim()))
   const anyNamed = lines.length === 1
-    && (NAMED_UNNUMBERED.test(lines[0].trim()) || NAMED_NUMBERED.test(lines[0].trim()))
-  const anyKeyword = lines.length === 1 && /^(关键词|keywords?)\s*[：:]/i.test(lines[0].trim())
+    && (matchNamedUnnumbered(lines[0].trim()) || matchNamedNumbered(lines[0].trim()))
+  const anyKeyword = lines.length === 1 && /^(关键词|key\s*words?)\s*[：:]/i.test(lines[0].trim())
 
   // 整组都没有编号/栏目标记 → 按分段模式整体决定
   if (!anyMarker && !anyNamed && !anyKeyword && lines.length >= 2) {
@@ -222,20 +244,18 @@ function splitGroupToUnits(lines, splitMode = 'auto', proseContext = false, list
   for (const line of lines) {
     const s = line.trim()
     if (single) {
-      const namedU = s.match(NAMED_UNNUMBERED)
-      if (namedU) {
+      if (matchNamedUnnumbered(s)) {
         flush()
-        units.push({ type: 'named', text: namedU[1], unnumbered: true })
+        units.push({ type: 'named', text: s, unnumbered: true })
         continue
       }
-      const namedN = s.match(NAMED_NUMBERED)
-      if (namedN) {
+      if (matchNamedNumbered(s)) {
         flush()
-        units.push({ type: 'named', text: namedN[1], unnumbered: false })
+        units.push({ type: 'named', text: s, unnumbered: false })
         continue
       }
-      // 关键词：xxx / Keywords: xxx → 普通段落
-      if (/^(关键词|keywords?)\s*[：:]/i.test(s)) {
+      // 关键词：xxx / Key words: xxx → 普通段落
+      if (/^(关键词|key\s*words?)\s*[：:]/i.test(s)) {
         para.push(line)
         continue
       }
@@ -243,11 +263,19 @@ function splitGroupToUnits(lines, splitMode = 'auto', proseContext = false, list
     const m = parseMarker(line)
     if (m) {
       flush()
-      units.push({ type: 'marked', text: m.text, level: m.level, marker: m.marker, raw: s })
+      units.push({ type: 'marked', text: m.text, level: m.level, marker: m.marker, raw: s, listish: !!m.listish })
       continue
     }
-    if (single && !NAMED_UNNUMBERED.test(s) && s.length <= 60) {
-      // 单行成组：短行（允许句末标点）进入 bare 分类，由上下文决定条目/标题/段落
+    // 独立公式行 $$…$$ → 居中公式块（不是标题）
+    const formula = s.match(RE.formula)
+    if (formula && formula[1].trim()) {
+      flush()
+      units.push({ type: 'formula', text: s })
+      continue
+    }
+    if (single && !matchNamedUnnumbered(s) && (s.length <= 60
+      || (!ENDING_PUNCT.test(s) && !/[.!?]$/.test(s)))) {
+      // 单行成组：短行或无句末标点的长行（论文题目）进入 bare 分类
       units.push({ type: 'bare', text: s })
       continue
     }
@@ -255,6 +283,46 @@ function splitGroupToUnits(lines, splitMode = 'auto', proseContext = false, list
   }
   flush()
   return units
+}
+
+/** 连续整句 bare 行的规模（含自身），用于区分平行列表与孤立句子 */
+function bareSentenceRunSize(units, i) {
+  let n = 0
+  for (let k = i; k >= 0 && units[k].type === 'bare' && isCompleteSentenceLine(units[k].text); k -= 1) n += 1
+  for (let k = i + 1; k < units.length && units[k].type === 'bare' && isCompleteSentenceLine(units[k].text); k += 1) n += 1
+  return n
+}
+
+/** 常见 HTML 实体解码（网页复制残留） */
+function decodeEntities(s) {
+  return s
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&ldquo;/g, '“')
+    .replace(/&rdquo;/g, '”')
+    .replace(/&mdash;/g, '—')
+    .replace(/&hellip;/g, '…')
+    .replace(/<br\s*\/?>/gi, '\n')
+}
+
+/** markdown 管道表格行 */
+function isTableRow(line) {
+  return /^\s*\|.*\|\s*$/.test(line)
+}
+
+/** | a | b | → ['a','b'] */
+function splitTableRow(line) {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+}
+
+/** 表格分隔线 |---|---| */
+function isTableDivider(line) {
+  const cells = splitTableRow(line)
+  return cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c))
 }
 
 /**
@@ -284,10 +352,39 @@ function parseTextRegion(lines, splitMode = 'auto') {
   let proseContext = false
   let listHint = false
   for (const g of groups) {
+    // markdown 管道表格组 → 表格单元（| a | b | 连续行，可有 |---| 分隔线）
+    if (g.length >= 2 && g.every((l) => isTableRow(l))) {
+      const dataRows = g.filter((l) => !isTableDivider(l)).map(splitTableRow)
+      const hasDivider = g.some((l) => isTableDivider(l))
+      const header = hasDivider && dataRows.length ? dataRows.shift() : []
+      units.push({ type: 'table', header, rows: dataRows })
+      proseContext = false
+      listHint = false
+      continue
+    }
+    // 算法伪代码：`1: xxx` 步骤行组 / `输入:` `输出:` 组 → 代码单元
+    const stepCount = g.filter((l) => RE.algoStep.test(l)).length
+    const allIO = g.length >= 1
+      && g.length <= 3
+      && g.every((l) => RE.algoIO.test(l) && !ENDING_PUNCT.test(l.trim()))
+    if (g.length >= 2 && stepCount * 2 >= g.length && stepCount >= 2) {
+      units.push({ type: 'code', lines: g })
+      proseContext = false
+      listHint = false
+      continue
+    }
+    if (allIO) {
+      units.push({ type: 'code', lines: g })
+      proseContext = false
+      listHint = false
+      continue
+    }
     const votes = g.map((l) => lineVote(l))
     const hasCjk = g.some((l) => /[\u3400-\u9fff]/.test(l))
+    const refLikeCount = g.filter((l) => RE.refLike.test(l)).length
     const looksCode = g.length >= 2
       && !hasCjk
+      && refLikeCount * 2 < g.length
       && votes.every((v) => v === 'code' || v === '')
       && votes.some((v) => v === 'code')
     if (looksCode) {
@@ -306,7 +403,7 @@ function parseTextRegion(lines, splitMode = 'auto') {
   // 公文体检测：出现 一、/（一） 且其后跟着裸 "N." 时，"N." 视为第 3 级。
   // 但若全篇有"1 引言/2 结论"式学术栏目名，判定为学术文档族，不降级。
   const namedAcademic = units.some((u) => u.type === 'marked' && u.marker === 'dotted'
-    && u.level === 1 && NAMED_NUMBERED.test(u.text))
+    && u.level === 1 && matchNamedNumbered(u.text))
   let firstCnIndex = -1
   units.forEach((u, idx) => {
     if (firstCnIndex === -1 && u.type === 'marked' && (u.marker === 'cnTop' || u.marker === 'cnParen')) {
@@ -320,9 +417,23 @@ function parseTextRegion(lines, splitMode = 'auto') {
 
   /** @type {Block[]} */
   const blocks = []
+  let colonLead = false // 前一单元是冒号引导句（或其延续的条目行）
   for (let i = 0; i < units.length; i += 1) {
     const u = units[i]
     const next = units[i + 1]
+    // 冒号引导上下文：colon-bare 开启；条目行/列表行延续；其他单元关闭
+    if (i > 0) {
+      const p = units[i - 1]
+      if (p.type === 'bare' && /[:：]$/.test(p.text)) colonLead = true
+      else if (p.type === 'bare' && isCompleteSentenceLine(p.text)) { /* 延续 */ }
+      else if (p.type === 'marked' && (LIST_MARKERS.has(p.marker) || p.listish)) { /* 延续 */ }
+      else colonLead = false
+    }
+
+    if (u.type === 'table') {
+      blocks.push({ kind: 'table', text: '', header: u.header || [], rows: u.rows || [] })
+      continue
+    }
 
     if (u.type === 'code') {
       blocks.push({ kind: 'code', text: '', code: u.lines.join('\n'), language: '', fenced: false })
@@ -336,9 +447,13 @@ function parseTextRegion(lines, splitMode = 'auto') {
       blocks.push({ kind: 'heading', level: 1, text: u.text, unnumbered: u.unnumbered })
       continue
     }
+    if (u.type === 'formula') {
+      blocks.push({ kind: 'formula', text: u.text })
+      continue
+    }
 
     if (u.type === 'bare') {
-      // 冒号/半角冒号收尾 = 引导句（“…包括：”），不是标题
+      // 冒号/半角冒号收尾 = 引导句（“…包括：”/“各部门：”），不是标题
       if (/[:：]$/.test(u.text)) {
         blocks.push({ kind: 'paragraph', text: u.text })
         continue
@@ -350,18 +465,21 @@ function parseTextRegion(lines, splitMode = 'auto') {
       const nextBare = next && next.type === 'bare'
         ? { punct: isCompleteSentenceLine(next.text) }
         : null
+      // 整句行连排规模：≥3 行的平行句组才是列表，两行孤立句视为段落
+      const runSize = bareSentenceRunSize(units, i)
       let kind = 'item'
       if (punct) {
-        // 完整句：连排成条目；跟段落/代码/列表时是引导句；孤立时是段落
-        if (prevBare?.punct || nextBare?.punct) kind = 'item'
+        const itemishRun = (runSize >= 3 || (colonLead && runSize >= 2))
+          && (prevBare?.punct || nextBare?.punct)
+        if (itemishRun) kind = 'item'
         else if (next && (next.type === 'para' || next.type === 'code' || next.type === 'marked')) kind = 'paragraph'
         else if (!prevBare && !nextBare) kind = 'paragraph'
         else if (next == null) kind = 'paragraph'
-        else kind = 'item'
-      } else if (/[:：]$/.test(u.text) && next && next.type === 'marked') {
-        // 冒号引导句 + 列表 → 段落
-        kind = 'paragraph'
-      } else if (next && (next.type === 'para' || next.type === 'code')) {
+        else kind = 'paragraph'
+      } else if (next && next.type === 'bare' && /[:：]$/.test(next.text)) {
+        // 无标点标题 + 冒号受文/引导行（公文开头形态）
+        kind = 'heading'
+      } else if (next && (next.type === 'para' || next.type === 'code' || next.type === 'named')) {
         kind = 'heading'
       } else if (nextBare && !nextBare.punct) {
         kind = 'item'
@@ -375,7 +493,7 @@ function parseTextRegion(lines, splitMode = 'auto') {
         kind = 'item'
       }
       if (kind === 'heading') {
-        blocks.push({ kind: 'heading', level: 1, text: u.text })
+        blocks.push({ kind: 'heading', level: 1, text: u.text, bareOrigin: true })
       } else {
         blocks.push({ kind, text: u.text })
       }
@@ -402,18 +520,47 @@ function parseTextRegion(lines, splitMode = 'auto') {
 
     const nextIsContent = next && (next.type === 'para' || next.type === 'code')
     const nextIsSameMarker = next && next.type === 'marked' && next.marker === u.marker && u.marker !== 'chapter'
-    const markerIsListType = LIST_MARKERS.has(u.marker)
+    const prevIsSameMarker = i > 0 && units[i - 1].type === 'marked' && units[i - 1].marker === u.marker
+    const cnMarker = u.marker === 'cnTop' || u.marker === 'cnParen'
+    // 中文序号连续出现且各自很短 → 大纲式条目（无正文的并列小项）
+    const cnShortRun = cnMarker && (nextIsSameMarker || prevIsSameMarker) && [...u.text].length <= 16
+    const markerIsListType = LIST_MARKERS.has(u.marker) || u.listish || cnShortRun
+    // 公文三级标题形态（"1. 首页布局"）需要上级是 一、/（一）标题（可隔着兄弟标题）
+    let prevCnHeading = false
+    for (let k = blocks.length - 1; k >= 0; k -= 1) {
+      const pb = blocks[k]
+      if (pb.kind !== 'heading') break
+      if (pb.cnOrigin) {
+        prevCnHeading = true
+        break
+      }
+    }
 
-    if (ENDING_PUNCT.test(u.text) && nextIsSameMarker && !nextIsContent) {
-      // 带句末标点且同类标记连续 → 是列项句而非标题，保留原行文本
+    // 列表型标记与相邻同标记：
+    //   中文序号连排短行 → 条目；"1." 式且上级为公文标题且短 → 三级标题；其余 → 条目
+    if (markerIsListType && (nextIsSameMarker || prevIsSameMarker) && !nextIsContent) {
+      const adj = nextIsSameMarker
+        ? next
+        : (prevIsSameMarker ? units[i - 1] : null)
+      const shortTitleish = u.listish
+        && prevCnHeading
+        && /[\u3400-\u9fff]/.test(u.text)
+        && [...u.text].length <= 16
+        && !ENDING_PUNCT.test(u.text)
+        && !!adj && [...adj.text].length <= 16 && !ENDING_PUNCT.test(adj.text)
+      if (shortTitleish) {
+        blocks.push({ kind: 'heading', level, text: u.text })
+      } else {
+        blocks.push({ kind: 'item', text: u.text, level })
+      }
+      continue
+    }
+    if (/[:：]$/.test(u.text) && nextIsSameMarker && !nextIsContent) {
+      // 冒号收尾的同标记引导句 → 段落，保留原行文本
       blocks.push({ kind: 'paragraph', text: u.raw })
       continue
     }
-    if (markerIsListType && nextIsSameMarker && !nextIsContent) {
-      blocks.push({ kind: 'item', text: u.text, level })
-      continue
-    }
-    blocks.push({ kind: 'heading', level, text: u.text })
+    blocks.push({ kind: 'heading', level, text: u.text, cnOrigin: cnMarker })
   }
   return blocks
 }
@@ -426,7 +573,7 @@ function parseTextRegion(lines, splitMode = 'auto') {
  */
 export function parseBlocks(text, options = {}) {
   const splitMode = options.splitMode === 'items' || options.splitMode === 'merge' ? options.splitMode : 'auto'
-  const normalized = String(text ?? '')
+  const normalized = decodeEntities(String(text ?? ''))
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
     .replace(/\s+$/, '')
@@ -457,6 +604,39 @@ export function parseBlocks(text, options = {}) {
   }
   if (cursor < lines.length) {
     blocks.push(...parseTextRegion(lines.slice(cursor), splitMode))
+  }
+
+  // 相邻隐式代码块合并（如算法的 输入/输出 与步骤行被空行分割）
+  for (let k = blocks.length - 1; k > 0; k -= 1) {
+    const cur = blocks[k]
+    const prev = blocks[k - 1]
+    if (cur.kind === 'code' && !cur.fenced && prev.kind === 'code' && !prev.fenced) {
+      prev.code = `${prev.code}\n${cur.code}`
+      blocks.splice(k, 1)
+    }
+  }
+
+  // 文档题目：首个块来自无标记单行、足够长、无句末标点，且后文存在其他标题
+  const first = blocks[0]
+  if (first && first.kind === 'heading' && first.bareOrigin
+    && [...first.text].length >= 10 && !ENDING_PUNCT.test(first.text)
+    && blocks.slice(1).some((b) => b.kind === 'heading')) {
+    first.kind = 'title'
+  }
+
+  // 落款：文末日期行（2026年3月15日 / March 15, 2026）及其前一短行机构 → 右对齐
+  const dateRe = /^\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日$|^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s*\d{4}$/i
+  for (let k = blocks.length - 1; k >= 0 && k >= blocks.length - 4; k -= 1) {
+    const b = blocks[k]
+    if ((b.kind === 'item' || b.kind === 'paragraph') && dateRe.test(b.text.trim())) {
+      b.kind = 'signoff'
+      const prevBlock = blocks[k - 1]
+      if (prevBlock && (prevBlock.kind === 'item' || prevBlock.kind === 'paragraph')
+        && [...prevBlock.text].length <= 20 && !isCompleteSentenceLine(prevBlock.text)) {
+        prevBlock.kind = 'signoff'
+      }
+      break
+    }
   }
   return blocks
 }
