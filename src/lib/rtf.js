@@ -122,6 +122,43 @@ function captionBorders(frame, ac, isFirst) {
 }
 
 /**
+ * Code-block borders for the single box paragraph (caption owns the top edge).
+ * @param {import('./frame.js').FrameStyle} frame
+ * @param {number} ac
+ * @param {boolean} hasCaption
+ */
+function codeBlockBorders(frame, ac, hasCaption) {
+  const s = `\\brdrs\\brdrw40\\brdrcf${ac}`
+  if (frame === 'box') {
+    const top = hasCaption ? '' : `\\brdrt${s}`
+    return `${top}\\brdrl${s}\\brdrr${s}\\brdrb${s}`
+  }
+  if (frame === 'rails') return `\\brdrl${s}\\brdrr${s}`
+  return `\\brdrl${s}`
+}
+
+/**
+ * Paragraph prefix: indent/spacing BEFORE borders/fonts.
+ * Putting \\noproof or borders before \\li made some Word builds drop margins / reject paste.
+ * @param {{
+ *  left: number,
+ *  right: number,
+ *  linePart: string,
+ *  fontSizeHalfPoints: number,
+ *  shade: string,
+ *  fg: number,
+ *  borders: string
+ * }} p
+ */
+function paraHead({ left, right, linePart, fontSizeHalfPoints, shade, fg, borders }) {
+  return (
+    `\\pard\\plain\\ql\\hyphpar0\\nowidctlpar` +
+    `\\li${left}\\ri${right}\\sa0\\sb0${linePart}` +
+    `\\f0\\fs${fontSizeHalfPoints}${shade}\\cf${fg}${borders} `
+  )
+}
+
+/**
  * @param {import('../themes.js').StyledRun[][]} lines
  * @param {{
  *  background: string,
@@ -233,25 +270,45 @@ export function linesToRtf(lines, options) {
     captionPart = capLines.map((text, i) => {
       const borders = captionBorders(frame, ac, i === 0)
       return (
-        `\\pard\\plain\\ql\\f1\\fs${capFs}\\cf${capCf}${capB}${capI}${capShade}${borders}` +
-        `\\hyphpar0\\nowidctlpar` +
+        `\\pard\\plain\\ql\\hyphpar0\\nowidctlpar` +
         `\\li${left}\\ri${right}\\sa0\\sb0 ` +
+        `\\f1\\fs${capFs}\\cf${capCf}${capB}${capI}${capShade}${borders} ` +
         `${escapeRtf(text)}\\par\n`
       )
     }).join('')
   }
 
-  let body = rows.map((row, i) => {
-    const borders = rtfParaBorders(frame, ac, i, rows.length, !!capLines.length)
-    const content =
-      `\\pard\\plain\\ql\\f0\\fs${fontSizeHalfPoints}` +
-      `${shade}\\cf${fg}` +
-      borders +
-      `\\hyphpar0\\nowidctlpar\\noproof` +
-      `\\li${left}\\ri${right}\\sa0\\sb0${linePart}` +
-      lineContent(row, i)
-    return `${content}\\par`
-  }).join('\n')
+  let body
+  if (frame === 'box') {
+    // One paragraph + \\line keeps a continuous box; per-line \\par box borders
+    // have made Word reject the clipboard paste on some builds.
+    const boxBorders = codeBlockBorders(frame, ac, !!capLines.length)
+    const head = paraHead({
+      left,
+      right,
+      linePart,
+      fontSizeHalfPoints,
+      shade,
+      fg,
+      borders: boxBorders
+    })
+    const inner = rows.map((row, i) => lineContent(row, i)).join('\\line\n')
+    body = `${head}${inner}\\par`
+  } else {
+    body = rows.map((row, i) => {
+      const borders = rtfParaBorders(frame, ac, i, rows.length, !!capLines.length)
+      const head = paraHead({
+        left,
+        right,
+        linePart,
+        fontSizeHalfPoints,
+        shade,
+        fg,
+        borders
+      })
+      return `${head}${lineContent(row, i)}\\par`
+    }).join('\n')
+  }
 
   return [
     '{\\rtf1\\ansi\\ansicpg1252\\deff0\\nouicompat\\uc1',

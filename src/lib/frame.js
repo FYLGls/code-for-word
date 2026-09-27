@@ -13,20 +13,24 @@ export function resolveFrameStyle(id) {
 }
 
 /**
- * RTF paragraph border controls (one paragraph per code line — hard \\par returns).
+ * RTF paragraph border controls.
+ * Box keeps a single multi-line paragraph (\\line) — per-line box borders often
+ * make Word reject clipboard paste; bar/rails use one \\par per line.
  * @param {FrameStyle} frame
  * @param {number} colorIndex colortbl index for accent
  * @param {number} index line index
  * @param {number} total line count
- * @param {boolean} [hasCaption] box: skip top edge when caption owns it
+ * @param {boolean} [hasCaption] unused for box (single para); kept for API stability
  */
 export function rtfParaBorders(frame, colorIndex, index, total, hasCaption = false) {
+  void hasCaption
+  void index
+  void total
   const s = `\\brdrs\\brdrw40\\brdrcf${colorIndex}`
   if (frame === 'bar') return `\\brdrl${s}`
   if (frame === 'rails') return `\\brdrl${s}\\brdrr${s}`
-  const top = index === 0 && !hasCaption ? `\\brdrt${s}` : ''
-  const bottom = index === total - 1 ? `\\brdrb${s}` : ''
-  return `${top}\\brdrl${s}\\brdrr${s}${bottom}`
+  // box: borders applied once on the multi-line paragraph
+  return ''
 }
 
 /**

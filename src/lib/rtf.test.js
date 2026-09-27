@@ -224,7 +224,7 @@ describe('RTF exporter', () => {
     expect(rtf).not.toContain('\\brdrt')
   })
 
-  it('box frame uses hard \\par returns with outer borders on first/last lines', () => {
+  it('box frame is one paragraph with four borders and soft line breaks', () => {
     const rtf = linesToRtf(
       [
         [{ text: 'a', color: '#000000' }],
@@ -241,14 +241,31 @@ describe('RTF exporter', () => {
     )
     // no table — Word "保留原格式" tears nested cells apart
     expect(rtf).not.toContain('\\trowd')
-    expect(rtf).not.toContain('\\line')
     expect(rtf).toMatch(/\\brdrt\\brdrs\\brdrw40\\brdrcf\d+/)
     expect(rtf).toMatch(/\\brdrb\\brdrs\\brdrw40\\brdrcf\d+/)
     expect(rtf).toMatch(/\\brdrl\\brdrs\\brdrw40\\brdrcf\d+/)
     expect(rtf).toMatch(/\\brdrr\\brdrs\\brdrw40\\brdrcf\d+/)
-    expect((rtf.match(/\\pard\\plain/g) || []).length).toBe(3)
-    expect((rtf.match(/\\par/g) || []).length).toBeGreaterThanOrEqual(3)
-    expect((rtf.match(/\\cbpat/g) || []).length).toBe(3)
+    expect((rtf.match(/\\line/g) || []).length).toBe(2)
+    expect((rtf.match(/\\pard\\plain/g) || []).length).toBe(1)
+    expect((rtf.match(/\\cbpat/g) || []).length).toBe(1)
+  })
+
+  it('puts \\li/\\ri before borders so Word keeps side margins on paste', () => {
+    const rtf = linesToRtf(
+      [[{ text: 'x', color: '#000000' }]],
+      {
+        background: '#F5F5F5',
+        foreground: '#000000',
+        frameStyle: 'bar',
+        accentLeft: '#007ACC',
+        sideMarginTwips: { left: 1134, right: 1134 },
+        pageContentTwips: 9026
+      }
+    )
+    const para = rtf.match(/\\pard\\plain[\s\S]*?\\par/)?.[0] || ''
+    expect(para.indexOf('\\li1134')).toBeGreaterThan(-1)
+    expect(para.indexOf('\\li1134')).toBeLessThan(para.indexOf('\\brdrl'))
+    expect(para).not.toMatch(/\\noproof\\li/)
   })
 
   it('emits in-box caption rows with fill, font, and underlines (no line numbers)', () => {
