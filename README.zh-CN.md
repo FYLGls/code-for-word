@@ -21,7 +21,7 @@
 
 1. 在 [Releases](https://github.com/L00PLeGeNd/code-for-word/releases/latest) 下载 `CodeForWord-Setup-*.exe`
 2. 安装后从开始菜单打开 **Code for Word**
-3. 粘贴代码 → **复制到 Word** → 到 Word 里 `Ctrl+V`
+3. 粘贴代码 → **复制到 Word** → 到 Word 里 `Ctrl+V`（粘贴选项尽量选 **保留源格式**）
 
 若出现 SmartScreen「未知发布者」，点 **更多信息 → 仍要运行**（目前安装包未做代码签名）。
 
