@@ -2,6 +2,9 @@
  * Clipboard client:
  * - Desktop / local http: prefer Windows RTF host
  * - Public https (GitHub Pages): browser clipboard only (never call localhost)
+ *
+ * Important: on the web path, do not await anything before clipboard writes —
+ * even a resolved await can drop the click user-activation in Chromium.
  */
 
 const HOST = `http://127.0.0.1:${import.meta.env?.VITE_CLIP_PORT || 5199}`
@@ -17,7 +20,6 @@ function canUseClipboardHost() {
 }
 
 async function postHost(body, timeoutMs = 800) {
-  if (!canUseClipboardHost()) return null
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
@@ -37,31 +39,32 @@ async function postHost(body, timeoutMs = 800) {
   }
 }
 
+function wrapHtmlFragment(html) {
+  return (
+    `<!DOCTYPE html><html><head><meta charset="utf-8"></head>` +
+    `<body><!--StartFragment-->${html}<!--EndFragment--></body></html>`
+  )
+}
+
 /**
  * Word path: RTF via host when available; otherwise HTML for the browser.
  * @param {{ rtf: string, html: string, plain: string }} payload
  */
 export async function writeClipboard(payload) {
-  const host = await postHost({
-    rtf: payload.rtf,
-    plain: payload.plain,
-    mode: 'rtf'
-  })
-  if (host) return { via: 'native-rtf', detail: host }
-
-  const wrapped =
-    `<!DOCTYPE html><html><head><meta charset="utf-8"></head>` +
-    `<body><!--StartFragment-->${payload.html}<!--EndFragment--></body></html>`
-
-  // Prefer execCommand during the click gesture — more reliable for text/html → Word
-  try {
-    await writeViaCopyEvent(wrapped, payload.plain, '')
-    return { via: 'execCommand' }
-  } catch {
-    /* fall through */
+  // Only await the host when we are actually allowed to use it.
+  if (canUseClipboardHost()) {
+    const host = await postHost({
+      rtf: payload.rtf,
+      plain: payload.plain,
+      mode: 'rtf'
+    })
+    if (host) return { via: 'native-rtf', detail: host }
   }
 
-  if (navigator.clipboard?.write && window.ClipboardItem) {
+  const wrapped = wrapHtmlFragment(payload.html)
+
+  // ClipboardItem first — best HTML→Word path while the click gesture is alive
+  if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
     try {
       await navigator.clipboard.write([
         new ClipboardItem({
@@ -75,9 +78,20 @@ export async function writeClipboard(payload) {
     }
   }
 
+  try {
+    writeViaCopyEvent(wrapped, payload.plain, '')
+    return { via: 'execCommand' }
+  } catch {
+    /* fall through */
+  }
+
   if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(payload.plain)
-    return { via: 'browser-text' }
+    try {
+      await navigator.clipboard.writeText(payload.plain)
+      return { via: 'browser-text' }
+    } catch {
+      /* fall through */
+    }
   }
 
   throw new Error('copy failed')
@@ -88,44 +102,62 @@ export async function writeClipboard(payload) {
  * @param {{ plain: string }} payload
  */
 export async function writePlainClipboard(payload) {
-  const host = await postHost({
-    plain: payload.plain,
-    mode: 'plain'
-  })
-  if (host) return { via: 'native-plain', detail: host }
-
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(payload.plain)
-    return { via: 'browser-text' }
+  if (canUseClipboardHost()) {
+    const host = await postHost({
+      plain: payload.plain,
+      mode: 'plain'
+    })
+    if (host) return { via: 'native-plain', detail: host }
   }
 
-  await writeViaCopyEvent('', payload.plain, '')
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(payload.plain)
+      return { via: 'browser-text' }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  writeViaCopyEvent('', payload.plain, '')
   return { via: 'execCommand' }
 }
 
 function writeViaCopyEvent(html, plain, rtf) {
-  return new Promise((resolve, reject) => {
-    const onCopy = (e) => {
+  const onCopy = (e) => {
+    if (html) e.clipboardData.setData('text/html', html)
+    e.clipboardData.setData('text/plain', plain)
+    if (rtf) e.clipboardData.setData('text/rtf', rtf)
+    e.preventDefault()
+  }
+
+  document.addEventListener('copy', onCopy)
+
+  const probe = document.createElement('textarea')
+  probe.value = plain || ' '
+  probe.setAttribute('readonly', '')
+  probe.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0'
+  document.body.appendChild(probe)
+
+  const prev = document.activeElement
+  let ok = false
+  try {
+    probe.focus()
+    probe.select()
+    ok = document.execCommand('copy')
+  } finally {
+    document.removeEventListener('copy', onCopy)
+    probe.remove()
+    if (prev && typeof prev.focus === 'function') {
       try {
-        if (html) e.clipboardData.setData('text/html', html)
-        e.clipboardData.setData('text/plain', plain)
-        if (rtf) e.clipboardData.setData('text/rtf', rtf)
-        e.preventDefault()
-      } catch (err) {
-        reject(err)
-        return
+        prev.focus()
+      } catch {
+        /* ignore */
       }
     }
-    document.addEventListener('copy', onCopy)
-    let ok = false
-    try {
-      ok = document.execCommand('copy')
-    } finally {
-      document.removeEventListener('copy', onCopy)
-    }
-    if (ok) resolve()
-    else reject(new Error('copy failed'))
-  })
+  }
+
+  if (!ok) throw new Error('copy failed')
 }
 
 /** @param {Blob} blob @param {string} filename */
