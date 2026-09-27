@@ -111,7 +111,7 @@ export function codeToStyledLines(code, language, themeId, hljs) {
   if (!code) return { lines: [[]], language: 'plaintext', theme }
 
   // Drop trailing newlines so paste does not grow an empty final paragraph
-  const source = code.replace(/\n+$/, '')
+  const source = code.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\n+$/, '')
   if (!source) return { lines: [[]], language: 'plaintext', theme }
 
   let value
