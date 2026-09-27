@@ -27,6 +27,44 @@ ipcMain.handle('shell:setLocale', async (_event, locale) => {
   return shellLocale
 })
 
+// 主进程网络代理：AI 翻译接口（智谱等）不带 CORS 头，浏览器直调会被拦。
+// 渲染进程经此通道转发，仅放行 http(s) 且限制 JSON 载荷大小。
+const { net } = require('electron')
+
+ipcMain.handle('net:fetch', async (_event, url, init = {}) => {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+    return { ok: false, status: 0, error: 'bad-url' }
+  }
+  const method = typeof init.method === 'string' ? init.method.toUpperCase() : 'GET'
+  if (!['GET', 'POST'].includes(method)) {
+    return { ok: false, status: 0, error: 'bad-method' }
+  }
+  const headers = {}
+  if (init.headers && typeof init.headers === 'object') {
+    for (const [k, v] of Object.entries(init.headers)) {
+      if (typeof k === 'string' && typeof v === 'string' && k.length < 100 && v.length < 4096) {
+        headers[k] = v
+      }
+    }
+  }
+  let body = null
+  if (typeof init.body === 'string' && init.body.length <= 512 * 1024) {
+    body = init.body
+  }
+  try {
+    const res = await net.fetch(url, {
+      method,
+      headers,
+      body,
+      signal: init.signal || undefined
+    })
+    const text = await res.text()
+    return { ok: res.ok, status: res.status, text: text.slice(0, 2048 * 1024) }
+  } catch (err) {
+    return { ok: false, status: 0, error: err?.name === 'AbortError' ? 'aborted' : 'network' }
+  }
+})
+
 const CLIP_PORT = Number(process.env.CODEPASTE_CLIP_PORT || 5199)
 
 let mainWindow = null

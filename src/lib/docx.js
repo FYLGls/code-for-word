@@ -142,6 +142,9 @@ const CELL_NO_BORDERS = {
   right: NIL_BORDER
 }
 
+// 导出给论文排版管线（paper-export.js）复用；原调用不变
+export { NIL_BORDER, CELL_NO_BORDERS, tableBorders }
+
 /**
  * @param {import('../themes.js').StyledRun[][]} lines
  * @param {{

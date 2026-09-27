@@ -21,6 +21,17 @@ const KEY = 'codepaste-prefs'
  * @property {boolean} [captionBold]
  * @property {boolean} [captionItalic]
  * @property {string[]} [captionLines]
+ * @property {string} [mode] auto | code | text
+ * @property {string} [textScheme] academic | thesis | official | none
+ * @property {string} [textBodyFont]
+ * @property {string} [textBodySize]
+ * @property {string} [textLineSpacing]
+ * @property {boolean} [textIndent]
+ * @property {string} [translateProvider] none | free | ai
+ * @property {string} [translateOutput] original | translated | bilingual
+ * @property {string} [aiBaseUrl]
+ * @property {string} [aiModel]
+ * @property {string} [aiApiKey]
  */
 
 /** @returns {Prefs} */
