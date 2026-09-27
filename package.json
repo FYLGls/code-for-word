@@ -1,0 +1,137 @@
+{
+  "name": "codepaste",
+  "version": "0.2.0",
+  "private": false,
+  "description": "Code for Word / 码文 — paste VS Code–styled code into Microsoft Word via native RTF (Windows desktop).",
+  "type": "module",
+  "main": "electron/main.cjs",
+  "bin": {
+    "codepaste": "bin/codepaste.mjs"
+  },
+  "files": [
+    "bin",
+    "electron",
+    "resources",
+    "scripts",
+    "server",
+    "src",
+    "index.html",
+    "vite.config.js",
+    "docs/demo.gif",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "start": "node scripts/dev.mjs",
+    "clip": "node server/clipboard-host.mjs",
+    "build": "vite build",
+    "dist:win": "vite build && electron-builder --win nsis",
+    "pack:dir": "vite build && electron-builder --win dir",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "codepaste",
+    "code-for-word",
+    "码文",
+    "码贴",
+    "syntax-highlight",
+    "code-highlight",
+    "microsoft-word",
+    "word",
+    "rtf",
+    "docx",
+    "clipboard",
+    "vscode",
+    "electron",
+    "paste-to-word",
+    "thesis",
+    "论文",
+    "代码高亮",
+    "粘贴"
+  ],
+  "license": "MIT",
+  "author": "Yinghuai Fu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/L00PLeGeNd/code-for-word.git"
+  },
+  "homepage": "https://github.com/L00PLeGeNd/code-for-word",
+  "bugs": {
+    "url": "https://github.com/L00PLeGeNd/code-for-word/issues"
+  },
+  "codepaste": {
+    "githubOwner": "L00PLeGeNd",
+    "githubRepo": "code-for-word"
+  },
+  "build": {
+    "appId": "com.codepaste.app",
+    "productName": "Code for Word",
+    "copyright": "Copyright © Code for Word contributors",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "server/**/*",
+      "resources/icon.ico",
+      "resources/icon.png",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "resources/icon.ico",
+      "artifactName": "CodeForWord-Setup-${version}.${ext}"
+    },
+    "executableName": "CodeForWord",
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Code for Word",
+      "displayLanguageSelector": true,
+      "installerLanguages": [
+        "en_US",
+        "zh_CN",
+        "fr_FR",
+        "es_ES",
+        "ru_RU"
+      ],
+      "language": "en_US",
+      "include": "electron/installer.nsh",
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "installerHeaderIcon": "resources/icon.ico",
+      "runAfterFinish": true,
+      "perMachine": false
+    }
+  },
+  "dependencies": {
+    "docx": "^9.5.1",
+    "highlight.js": "^11.11.1"
+  },
+  "devDependencies": {
+    "electron": "^35.7.5",
+    "electron-builder": "^26.0.12",
+    "jsdom": "^26.1.0",
+    "playwright": "^1.63.0",
+    "vite": "^6.3.5",
+    "vitest": "^3.2.4"
+  }
+}

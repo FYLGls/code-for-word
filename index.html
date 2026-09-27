@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>码文 · Code for Word</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="ambient" aria-hidden="true">
+    <span class="desk-wash"></span>
+    <span class="grain"></span>
+  </div>
+
+  <div class="app">
+    <header class="titlebar enter">
+      <button type="button" class="brand-lock" id="brandHome" data-i18n-aria="brandAria" aria-label="打开码文项目主页">
+        <span class="mark" aria-hidden="true">CW</span>
+        <div class="brand-text">
+          <h1 data-i18n="brandName">码文</h1>
+          <p class="product" data-i18n="brandTag">贴进 Word</p>
+          <p class="brand-promo" data-i18n="promoTagline">高亮代码一键粘贴，格式不乱</p>
+        </div>
+      </button>
+      <div class="titlebar-actions">
+        <label class="field field-inline">
+          <span data-i18n="uiLang">界面语言</span>
+          <select id="uiLang" aria-label="UI language"></select>
+        </label>
+        <button type="button" class="btn ghost" id="btnSample" data-i18n="btnSample">示例</button>
+        <button type="button" class="btn ghost" id="btnClear" data-i18n="btnClear">清空</button>
+        <button type="button" class="btn primary" id="btnDownload" data-i18n="downloadDocx">下载 DOCX</button>
+        <button type="button" class="btn primary" id="btnCopy" data-i18n="btnCopy">复制到 Word</button>
+      </div>
+    </header>
+
+    <section class="toolbar enter">
+      <div class="toolbar-row">
+        <label class="field"><span data-i18n="langCode">语言</span>
+          <select id="language" aria-label="language"></select>
+        </label>
+        <label class="field"><span data-i18n="font">字体</span>
+          <select id="fontFamily" aria-label="font"></select>
+        </label>
+        <label class="field"><span data-i18n="fontSize">字号</span>
+          <select id="fontSize" aria-label="font size"></select>
+        </label>
+        <label class="field"><span data-i18n="background">底色</span>
+          <select id="background" aria-label="background"></select>
+        </label>
+        <label class="field"><span data-i18n="paper">纸张</span>
+          <select id="paper" aria-label="paper"></select>
+        </label>
+        <label class="field"><span data-i18n="margin">页边距</span>
+          <select id="sideMargin" aria-label="side margin"></select>
+        </label>
+        <label class="field"><span data-i18n="codeInset">代码边距</span>
+          <select id="codeInset" aria-label="code inset"></select>
+        </label>
+        <label class="field"><span data-i18n="accent">标识色</span>
+          <select id="accent" aria-label="marker color"></select>
+        </label>
+        <div class="field frame-picker" id="framePicker">
+          <span data-i18n="frameStyle">边框</span>
+          <button type="button" class="frame-trigger" id="btnFrame" aria-haspopup="listbox" aria-expanded="false">
+            <span class="frame-trigger-thumb" id="frameThumb" data-frame="bar" aria-hidden="true"></span>
+            <span id="frameLabel">左侧竖线</span>
+            <span class="chev" aria-hidden="true">▾</span>
+          </button>
+          <div class="frame-panel" id="framePanel" role="listbox" hidden>
+            <button type="button" class="frame-option" role="option" data-frame="bar" aria-selected="true">
+              <span class="frame-thumb" data-frame="bar" aria-hidden="true"></span>
+              <span data-i18n="frameBar">左侧竖线</span>
+            </button>
+            <button type="button" class="frame-option" role="option" data-frame="rails" aria-selected="false">
+              <span class="frame-thumb" data-frame="rails" aria-hidden="true"></span>
+              <span data-i18n="frameRails">左右竖线</span>
+            </button>
+            <button type="button" class="frame-option" role="option" data-frame="box" aria-selected="false">
+              <span class="frame-thumb" data-frame="box" aria-hidden="true"></span>
+              <span data-i18n="frameBox">四边外框</span>
+            </button>
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="lineNumbers" checked> <span data-i18n="lineNumbers">行号</span></label>
+        <label class="check"><input type="checkbox" id="forceBold"> <span data-i18n="bold">加粗</span></label>
+        <label class="check"><input type="checkbox" id="forceItalic"> <span data-i18n="italic">倾斜</span></label>
+        <label class="check"><input type="checkbox" id="captionEnabled"> <span data-i18n="caption">说明</span></label>
+      </div>
+      <div class="controls-row caption-row" id="captionRow" hidden>
+        <div class="caption-toolbar">
+          <label class="field">
+            <span data-i18n="captionFont">说明字体</span>
+            <select id="captionFont" aria-label="caption font"></select>
+          </label>
+          <label class="field">
+            <span data-i18n="captionColor">说明颜色</span>
+            <select id="captionColor" aria-label="caption color"></select>
+          </label>
+          <label class="field">
+            <span data-i18n="captionBg">说明底色</span>
+            <select id="captionBg" aria-label="caption background"></select>
+          </label>
+          <label class="check"><input type="checkbox" id="captionBold"> <span data-i18n="captionBold">加粗</span></label>
+          <label class="check"><input type="checkbox" id="captionItalic"> <span data-i18n="captionItalic">倾斜</span></label>
+          <div class="caption-row-btns">
+            <button type="button" class="btn ghost caption-btn" id="captionAddRow" data-i18n="captionAdd">加一栏</button>
+            <button type="button" class="btn ghost caption-btn" id="captionRemoveRow" data-i18n="captionRemove">减一栏</button>
+          </div>
+        </div>
+        <div class="caption-lines" id="captionLines"></div>
+      </div>
+    </section>
+
+    <main class="workspace enter">
+      <section class="panel">
+        <div class="panel-head">
+          <strong data-i18n="source">源代码</strong>
+          <span id="metaSource" class="meta">源代码</span>
+        </div>
+        <textarea id="source" spellcheck="false" data-i18n-placeholder="placeholder" placeholder="在此粘贴代码…"></textarea>
+      </section>
+      <section class="panel preview-panel">
+        <div class="panel-head">
+          <strong data-i18n="preview">Word 预览</strong>
+          <span id="metaPreview" class="meta">预览</span>
+        </div>
+        <div class="preview-stage">
+          <div class="preview-wrap" id="preview" data-mode="light"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="statusbar enter">
+      <p class="status" id="status" role="status"></p>
+      <div class="foot-links">
+        <button type="button" class="foot-github" id="btnGitHub" data-i18n-aria="promoGitHub">
+          <span class="foot-github-label" data-i18n="promoGitHub">GitHub</span>
+          <span class="foot-star" aria-hidden="true">★</span>
+          <span class="foot-star-hint" data-i18n="promoStar">点个 Star</span>
+        </button>
+        <span class="foot-meta" data-i18n="footer">MIT</span>
+      </div>
+    </footer>
+  </div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+node_modules
+dist
+release
+docs/_demo-frames
+install-locale.json
+.DS_Store
+*.log
+index.html.bak
+start.bat.bak
+*.exe
+!resources/**
