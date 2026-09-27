@@ -32,8 +32,11 @@ function countMatches(text, re) {
 
 /**
  * One line's vote: 'code' | 'text' | '' (abstain).
- * 代码结构信号（括号/引号/关键字/注释头等）优先于中文占比——
- * 否则带中文注释或中文字符串的代码会被误判为文本。
+ * 加权评分制：代码信号（花括号、行尾分号、括号+运算符、符号密度）与
+ * 散文信号（中文占比、中英文标点、多词英文）各自累计，高者胜、平局弃权。
+ * 不用"单一结构即判"——学术散文里括号/年份引用无处不在（BERT (…)、
+ * et al. (2019)、(p < 0.01)），也不搞"中文即文本"——带中文注释的代码
+ * 会被误伤。评分制两头兼顾。
  * @param {string} line
  * @returns {'code'|'text'|''}
  */
@@ -43,12 +46,10 @@ export function lineVote(line) {
   const nonspace = [...trimmed.replace(/\s/g, '')].length
   if (!nonspace) return ''
 
-  // 参考文献条目（[1] 作者. 标题…）与 markdown 表格行不参与代码/文本投票
+  // 前置规则：文献条目/markdown 表格行不投票；markdown 标题/链接是文本
   if (/^\s*\[\d{1,3}\]\s/.test(line)) return 'text'
   if (/^\s*\|.*\|\s*$/.test(line)) return ''
-  // markdown 标题行是文本（# 会被当成脚本注释投代码票）
   if (/^\s{0,3}#{1,6}\s+\S/.test(line)) return 'text'
-  // markdown 链接 [文字](url) 属于网页复制文本，不因方括号投代码票
   if (/\[[^\]\n]*\]\([^)\n]+\)/.test(trimmed)) return 'text'
 
   const cjk = countCjk(trimmed)
@@ -56,30 +57,39 @@ export function lineVote(line) {
   const symbolRatio = symbols / nonspace
   const cjkRatio = cjk / nonspace
   const letters = countMatches(trimmed, /[A-Za-z]/g)
+  const lettersRatio = letters / nonspace
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length
   const indent = line.match(/^\s+/)?.[0].replace(/\t/g, '    ').length ?? 0
 
-  // 代码结构信号
-  const hasBrackets = /[[\]{}()]/.test(trimmed)
-  const hasQuote = /["'`]/.test(trimmed)
-  const endsCodey = /[{};)\]]\s*$/.test(trimmed)
-  const keywordish = CODE_START_RE.test(line) || (KEYWORD_RE.test(trimmed) && symbols > 0)
-  const commentish = /^\s*(\/\/|#|\/\*|\*|--|;;|<!--)/.test(line)
-  const tagish = /^\s*(<\/?[a-zA-Z][\w-]*|<!DOCTYPE)/.test(line)
-  // 纯符号密度型代码信号（无括号/引号/关键字）对中文行不生效——
-  // 否则 markdown 表格行/实体残留行会被误判为代码
-  const symbolOnlyCode = (symbolRatio >= 0.15 || (indent >= 4 && symbolRatio >= 0.06)) && cjkRatio <= 0.15
-  const structuralCode = hasBrackets || endsCodey || keywordish || commentish || tagish || symbolOnlyCode
-  // 引号+符号密度也能说明代码，但中文占主导的普通引述句除外
-  const quotedCode = hasQuote && symbolRatio >= 0.10 && cjkRatio <= 0.4
+  // —— 硬规则（无歧义，直接判定）——
+  if (/^\s*(\/\/|\/\*|<!--|;;)/.test(line)) return 'code'
+  if (/^\s*#!\//.test(line)) return 'code' // shebang
+  if (/^\s#{1,3}\s/.test(line) && !/[\u3400-\u9fff]/.test(trimmed)) return 'code' // # 注释（markdown 标题已前置返回 text）
+  if (CODE_START_RE.test(line)) return 'code' // import/def/class/const/return… 行首
+  if (/^\s*(<\/?[a-zA-Z][\w-]*|<!DOCTYPE)/.test(line)) return 'code'
+  if (CJK_PUNCT_END_RE.test(trimmed)) return 'text' // 中文句读收尾
 
-  if (structuralCode || quotedCode) return 'code'
+  // —— 加权评分：高者胜、平局弃权 ——
+  let codeScore = 0
+  let textScore = 0
 
-  // 散文信号
-  if (cjkRatio > 0.15) return 'text'
-  if (CJK_PUNCT_END_RE.test(trimmed)) return 'text'
-  if (letters / nonspace > 0.55 && symbolRatio < 0.05 && trimmed.length > 25) return 'text'
+  if (/[{}]/.test(trimmed)) codeScore += 2 // 花括号是最强代码信号
+  if (/;\s*$/.test(trimmed)) codeScore += 2
+  if (/[{}()[\]]/.test(trimmed) && /[=<>!+\-*/%&|]/.test(trimmed)) codeScore += 1
+  if (KEYWORD_RE.test(trimmed) && symbols >= 2) codeScore += 1
+  if (symbolRatio >= 0.2) codeScore += 2
+  else if (symbolRatio >= 0.1) codeScore += 1
+  if (indent >= 4 && symbolRatio >= 0.04) codeScore += 1
 
-  if (symbolRatio >= 0.08) return 'code'
+  if (cjkRatio > 0.2) textScore += 2
+  if (cjkRatio > 0.5) textScore += 1
+  if (/[。．！？；，、：]/.test(trimmed)) textScore += 2
+  if (/[.!?]\s*$/.test(trimmed)) textScore += 1
+  if (wordCount >= 5 && lettersRatio >= 0.5 && symbolRatio < 0.12) textScore += 2 // 多词英文散文
+  if (/,\s/.test(trimmed)) textScore += 1 // 逗号+空格是散文节奏
+
+  if (codeScore > textScore) return 'code'
+  if (textScore > codeScore) return 'text'
   return ''
 }
 

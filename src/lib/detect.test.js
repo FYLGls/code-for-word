@@ -22,6 +22,21 @@ describe('lineVote', () => {
     expect(lineVote('setup')).toBe('')
     expect(lineVote('')).toBe('')
   })
+
+  it('votes text for academic prose containing brackets', () => {
+    expect(lineVote('BERT (Bidirectional Encoder Representations) achieved strong results.')).toBe('text')
+    expect(lineVote('Devlin et al. (2019) proposed the pre-training paradigm.')).toBe('text')
+    expect(lineVote('Our method outperforms all baselines (p < 0.01).')).toBe('text')
+    expect(lineVote('We further analyze the effect of batch size (see Figure 2).')).toBe('text')
+    expect(lineVote('该方法在多个数据集上进行了验证（GLUE、SuperGLUE）。')).toBe('text')
+  })
+
+  it('still votes code for real code lines under scoring', () => {
+    expect(lineVote('let acc = model.evaluate(X_test);')).toBe('code')
+    expect(lineVote('let config = { retries: 3 };')).toBe('code')
+    expect(lineVote('if (acc > best) {')).toBe('code')
+    expect(lineVote('const arr = [1, 2, 3].map(x => x * 2)')).toBe('code')
+  })
 })
 
 describe('findFences', () => {
