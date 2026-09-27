@@ -50,6 +50,7 @@ export const PAPER_DEFAULTS = {
   heading1SizePt: 16,
   heading2SizePt: 14,
   heading3SizePt: 12,
+  bodyAfterPt: 0,
   translations: null, // Map<blockIndex, string>
   translateOutput: 'original', // original | translated | bilingual
   codeCaption: true,
@@ -116,6 +117,7 @@ export function buildPaperModel(blocks, options = {}) {
   const centerL1 = opts.scheme === 'thesis'
   const joiner = joinerFor(opts.scheme)
   const alignBody = opts.justify ? 'justify' : 'left'
+  const bodyAfterTwips = ptTwips(Math.max(0, opts.bodyAfterPt || 0))
 
   /** @type {PaperPara[]} */
   const paras = []
@@ -129,7 +131,7 @@ export function buildPaperModel(blocks, options = {}) {
       align: alignBody,
       firstLineTwips: kind === 'item' || kind === 'body' ? firstLine : 0,
       beforeTwips: 0,
-      afterTwips: 0,
+      afterTwips: kind === 'body' || kind === 'item' ? bodyAfterTwips : 0,
       lineMultiple: opts.lineSpacing,
       ...extra
     })

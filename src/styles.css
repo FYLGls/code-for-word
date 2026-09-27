@@ -922,3 +922,12 @@ textarea:focus { background: #fff; }
 
 .mode-row { display: flex; gap: 8px; align-items: center; }
 .mode-row .mode-switch { flex: 0 1 300px; }
+
+/* —— 翻译设置行 —— */
+.translate-row { flex: 1 1 100%; width: 100%; display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
+.translate-row[hidden] { display: none; }
+.translate-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.translate-toolbar .field { flex: 1 1 130px; }
+.translate-toolbar .check { flex: 0 0 auto; }
+.translate-btns { display: flex; gap: 8px; align-items: center; }
+.translate-btns .btn { min-height: 44px; }

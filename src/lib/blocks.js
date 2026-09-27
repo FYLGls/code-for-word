@@ -122,6 +122,12 @@ function isBareShortLine(line) {
   return true
 }
 
+/** 行是否以完整句末标点收尾（句号/问号/叹号/省略号） */
+function isCompleteSentenceLine(line) {
+  const s = line.trim()
+  return /[。．！？!?…]$/.test(s) || /\.$/.test(s)
+}
+
 /** 段内多行合并：中文边界不留空格，英文边界留一个空格 */
 function joinLines(lines) {
   let out = ''
@@ -147,13 +153,39 @@ function joinLines(lines) {
 
 /**
  * 组内拆分：每行 → named / marked / bare；剩余行合并为段落。
- * 整组都是无标记短行（≥2 行）时拆成 bare 条目（自动分条列项）。
  * @param {string[]} lines
+ * @param {'auto'|'items'|'merge'} [splitMode] 分段模式：
+ *   auto  = 启发式（整句行组 → 每行一条；无标记短行组 → 每行一条；其余合并）
+ *   items = 无标记多行组一律每行一条
+ *   merge = 无标记多行组一律合并成段
  * @returns {Unit[]}
  */
-function splitGroupToUnits(lines) {
-  if (lines.length >= 2 && lines.every((l) => isBareShortLine(l) && !parseMarker(l))) {
-    return lines.map((l) => ({ type: 'bare', text: l.trim() }))
+function splitGroupToUnits(lines, splitMode = 'auto') {
+  const anyMarker = lines.some((l) => parseMarker(l))
+  const anyNamed = lines.length === 1
+    && (NAMED_UNNUMBERED.test(lines[0].trim()) || NAMED_NUMBERED.test(lines[0].trim()))
+
+  // 整组都没有编号/栏目标记 → 按分段模式整体决定
+  if (!anyMarker && !anyNamed && lines.length >= 2) {
+    if (splitMode === 'items') {
+      return lines.map((l) => ({ type: 'bare', text: l.trim() }))
+    }
+    if (splitMode === 'merge') {
+      const text = joinLines(lines)
+      return text ? [{ type: 'para', text }] : []
+    }
+    // auto：≥3 行且多数行以句末标点收尾（PDF/网页复制的列表形态）→ 每行一条
+    const complete = lines.filter((l) => isCompleteSentenceLine(l)).length
+    if (lines.length >= 3 && complete / lines.length >= 0.6) {
+      return lines.map((l) => ({ type: 'bare', text: l.trim() }))
+    }
+    // 全部短行且无标点 → 每行一条
+    if (lines.every((l) => isBareShortLine(l))) {
+      return lines.map((l) => ({ type: 'bare', text: l.trim() }))
+    }
+    // 其余视为折行散文 → 合并
+    const text = joinLines(lines)
+    return text ? [{ type: 'para', text }] : []
   }
 
   /** @type {Unit[]} */
@@ -190,7 +222,8 @@ function splitGroupToUnits(lines) {
       units.push({ type: 'marked', text: m.text, level: m.level, marker: m.marker, raw: s })
       continue
     }
-    if (single && isBareShortLine(line) && !NAMED_UNNUMBERED.test(s)) {
+    if (single && !NAMED_UNNUMBERED.test(s) && s.length <= 60) {
+      // 单行成组：短行（允许句末标点）进入 bare 分类，由上下文决定条目/标题/段落
       units.push({ type: 'bare', text: s })
       continue
     }
@@ -203,9 +236,10 @@ function splitGroupToUnits(lines) {
 /**
  * 解析无围栏区域为块。
  * @param {string[]} lines
+ * @param {'auto'|'items'|'merge'} [splitMode]
  * @returns {Block[]}
  */
-function parseTextRegion(lines) {
+function parseTextRegion(lines, splitMode = 'auto') {
   // 空行分组
   /** @type {string[][]} */
   const groups = []
@@ -233,7 +267,7 @@ function parseTextRegion(lines) {
     if (looksCode) {
       units.push({ type: 'code', lines: g })
     } else {
-      units.push(...splitGroupToUnits(g))
+      units.push(...splitGroupToUnits(g, splitMode))
     }
   }
 
@@ -262,13 +296,41 @@ function parseTextRegion(lines) {
     }
 
     if (u.type === 'bare') {
-      // 后面是段落 → 标题；连续 bare / 到结尾 → 条目
-      if (next && (next.type === 'para' || next.type === 'code')) {
-        blocks.push({ kind: 'heading', level: 1, text: u.text })
+      const punct = isCompleteSentenceLine(u.text)
+      const prevBare = i > 0 && units[i - 1].type === 'bare'
+        ? { punct: isCompleteSentenceLine(units[i - 1].text) }
+        : null
+      const nextBare = next && next.type === 'bare'
+        ? { punct: isCompleteSentenceLine(next.text) }
+        : null
+      let kind = 'item'
+      if (punct) {
+        // 完整句：连排成条目；跟段落/代码/列表时是引导句；孤立时是段落
+        if (prevBare?.punct || nextBare?.punct) kind = 'item'
+        else if (next && (next.type === 'para' || next.type === 'code' || next.type === 'marked')) kind = 'paragraph'
+        else if (!prevBare && !nextBare) kind = 'paragraph'
+        else if (next == null) kind = 'paragraph'
+        else kind = 'item'
+      } else if (/[:：]$/.test(u.text) && next && next.type === 'marked') {
+        // 冒号引导句 + 列表 → 段落
+        kind = 'paragraph'
+      } else if (next && (next.type === 'para' || next.type === 'code')) {
+        kind = 'heading'
+      } else if (nextBare && !nextBare.punct) {
+        kind = 'item'
+      } else if (nextBare && nextBare.punct) {
+        kind = 'heading'
+      } else if (next && next.type === 'marked') {
+        kind = 'heading'
       } else if (next == null && units.length === 1) {
+        kind = 'heading'
+      } else if (next == null) {
+        kind = 'item'
+      }
+      if (kind === 'heading') {
         blocks.push({ kind: 'heading', level: 1, text: u.text })
       } else {
-        blocks.push({ kind: 'item', text: u.text })
+        blocks.push({ kind, text: u.text })
       }
       continue
     }
@@ -302,9 +364,11 @@ function parseTextRegion(lines) {
 /**
  * 粘贴内容 → 块序列。支持 ``` 围栏代码与隐式代码段。
  * @param {string} text
+ * @param {{ splitMode?: 'auto' | 'items' | 'merge' }} [options]
  * @returns {Block[]}
  */
-export function parseBlocks(text) {
+export function parseBlocks(text, options = {}) {
+  const splitMode = options.splitMode === 'items' || options.splitMode === 'merge' ? options.splitMode : 'auto'
   const normalized = String(text ?? '')
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
@@ -318,7 +382,7 @@ export function parseBlocks(text) {
   let cursor = 0
   for (const fence of fences) {
     if (fence.start > cursor) {
-      blocks.push(...parseTextRegion(lines.slice(cursor, fence.start)))
+      blocks.push(...parseTextRegion(lines.slice(cursor, fence.start), splitMode))
     }
     const inner = fence.closed
       ? lines.slice(fence.start + 1, Math.max(fence.start + 1, fence.end - 1))
@@ -335,7 +399,7 @@ export function parseBlocks(text) {
     cursor = fence.end
   }
   if (cursor < lines.length) {
-    blocks.push(...parseTextRegion(lines.slice(cursor)))
+    blocks.push(...parseTextRegion(lines.slice(cursor), splitMode))
   }
   return blocks
 }

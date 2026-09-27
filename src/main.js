@@ -157,6 +157,29 @@ const SCHEME_OPTIONS = [
   { id: 'none', labelKey: 'schemeNone' }
 ]
 
+const SPLIT_OPTIONS = [
+  { id: 'auto', labelKey: 'splitAuto' },
+  { id: 'items', labelKey: 'splitItems' },
+  { id: 'merge', labelKey: 'splitMerge' }
+]
+
+const INDENT_OPTIONS = [
+  { id: '2', labelKey: 'indent2' },
+  { id: '4', labelKey: 'indent4' },
+  { id: '0', labelKey: 'indent0' }
+]
+
+const ALIGN_OPTIONS = [
+  { id: 'justify', labelKey: 'alignJustify' },
+  { id: 'left', labelKey: 'alignLeft' }
+]
+
+const BODY_AFTER_OPTIONS = [
+  { id: '0', labelKey: 'after0', pt: 0 },
+  { id: '6', labelKey: 'afterHalf', pt: 6 },
+  { id: '12', labelKey: 'afterLine', pt: 12 }
+]
+
 const LINE_SPACING_OPTIONS = [
   { id: '1', labelKey: 'spacing1' },
   { id: '1.5', labelKey: 'spacing15' },
@@ -167,6 +190,12 @@ const TRANSLATE_PROVIDERS = [
   { id: 'none', labelKey: 'translateNone' },
   { id: 'free', labelKey: 'translateFree' },
   { id: 'ai', labelKey: 'translateAI' }
+]
+
+const TRANSLATE_DIRECTIONS = [
+  { id: 'auto', labelKey: 'dirAuto' },
+  { id: 'en2zh', labelKey: 'dirEn2Zh' },
+  { id: 'zh2en', labelKey: 'dirZh2En' }
 ]
 
 const TRANSLATE_OUTPUTS = [
@@ -224,14 +253,21 @@ const els = {
   detectChip: document.getElementById('detectChip'),
   codeToolbar: document.getElementById('codeToolbar'),
   textToolbar: document.getElementById('textToolbar'),
+  translateRow: document.getElementById('translateRow'),
   aiPanel: document.getElementById('aiPanel'),
   textScheme: document.getElementById('textScheme'),
+  textSplit: document.getElementById('textSplit'),
   textBodyFont: document.getElementById('textBodyFont'),
   textBodySize: document.getElementById('textBodySize'),
+  textHeadingFont: document.getElementById('textHeadingFont'),
   textLineSpacing: document.getElementById('textLineSpacing'),
-  textIndent: document.getElementById('textIndent'),
+  textIndentChars: document.getElementById('textIndentChars'),
+  textAlign: document.getElementById('textAlign'),
+  textBodyAfter: document.getElementById('textBodyAfter'),
   translateProvider: document.getElementById('translateProvider'),
+  translateDirection: document.getElementById('translateDirection'),
   translateOutput: document.getElementById('translateOutput'),
+  autoTranslate: document.getElementById('autoTranslate'),
   btnTranslate: document.getElementById('btnTranslate'),
   btnAiSettings: document.getElementById('btnAiSettings'),
   aiPreset: document.getElementById('aiPreset'),
@@ -262,11 +298,12 @@ let mode = 'auto'
 let textDetect = 'text'
 /** @type {Map<number, string> | null} 按原始块索引存放译文 */
 let translations = null
-/** @type {{ source: string, provider: string } | null} 译文有效性标记 */
+/** @type {{ source: string, provider: string, direction: string } | null} 译文有效性标记 */
 let translationsMeta = null
 let translating = false
 /** @type {{ paras: import('./lib/paper-format.js').PaperPara[], plainText: string } | null} */
 let latestPaper = null
+let autoTranslateTimer = 0
 
 function setStatus(text, kind = '') {
   els.status.textContent = text
@@ -315,12 +352,18 @@ function collectPrefs() {
     captionLines: captionLineValues.slice(),
     mode,
     textScheme: els.textScheme?.value || 'academic',
+    textSplit: els.textSplit?.value || 'auto',
     textBodyFont: els.textBodyFont?.value || '宋体',
     textBodySize: els.textBodySize?.value || '12',
+    textHeadingFont: els.textHeadingFont?.value || '黑体',
     textLineSpacing: els.textLineSpacing?.value || '1.5',
-    textIndent: !!els.textIndent?.checked,
-    translateProvider: els.translateProvider?.value || 'none',
+    textIndentChars: els.textIndentChars?.value || '2',
+    textAlign: els.textAlign?.value || 'justify',
+    textBodyAfter: els.textBodyAfter?.value || '0',
+    translateProvider: els.translateProvider?.value || 'free',
+    translateDirection: els.translateDirection?.value || 'auto',
     translateOutput: els.translateOutput?.value || 'translated',
+    autoTranslate: !!els.autoTranslate?.checked,
     aiBaseUrl: els.aiBaseUrl?.value || '',
     aiModel: els.aiModel?.value || '',
     aiApiKey: els.aiApiKey?.value || ''
@@ -350,15 +393,29 @@ function applyPrefs(p) {
   setVal(els.captionColor, p.captionColor)
   setVal(els.captionBg, p.captionBg)
   setVal(els.textScheme, p.textScheme)
+  setVal(els.textSplit, p.textSplit)
   setVal(els.textBodyFont, p.textBodyFont)
   setVal(els.textBodySize, p.textBodySize)
+  setVal(els.textHeadingFont, p.textHeadingFont)
   setVal(els.textLineSpacing, p.textLineSpacing)
-  setVal(els.translateProvider, p.translateProvider)
+  setVal(els.textIndentChars, p.textIndentChars)
+  setVal(els.textAlign, p.textAlign)
+  setVal(els.textBodyAfter, p.textBodyAfter)
+  // 旧版本默认写入的 'none' 不视为用户选择，交回新默认「免费翻译」
+  if (p.translateProvider && p.translateProvider !== 'none') {
+    setVal(els.translateProvider, p.translateProvider)
+  }
+  setVal(els.translateDirection, p.translateDirection)
   setVal(els.translateOutput, p.translateOutput)
   setVal(els.aiPreset, p.aiPreset)
   setVal(els.aiBaseUrl, p.aiBaseUrl)
   setVal(els.aiModel, p.aiModel)
   setVal(els.aiApiKey, p.aiApiKey)
+  // 兼容旧版布尔 textIndent
+  if (p.textIndentChars == null && p.textIndent === false && els.textIndentChars) {
+    els.textIndentChars.value = '0'
+  }
+  if (els.autoTranslate) els.autoTranslate.checked = p.autoTranslate !== false
   if (p.mode) mode = p.mode === 'code' || p.mode === 'text' ? p.mode : 'auto'
   if (els.forceBold) els.forceBold.checked = !!p.forceBold
   if (els.forceItalic) els.forceItalic.checked = !!p.forceItalic
@@ -436,24 +493,33 @@ function refillLabeledSelects() {
   syncCaptionLineLabels()
 }
 
-/** 文本模式选项下拉（编号方案 / 正文字体字号 / 行距 / 翻译） */
+/** 文本模式选项下拉（编号/分段/字体字号/行距/缩进/对齐/段距/翻译） */
 function refillTextSelects() {
   fillKeyedSelect(els.textScheme, SCHEME_OPTIONS, els.textScheme?.value || 'academic', 'academic')
+  fillKeyedSelect(els.textSplit, SPLIT_OPTIONS, els.textSplit?.value || 'auto', 'auto')
   fillKeyedSelect(els.textLineSpacing, LINE_SPACING_OPTIONS, els.textLineSpacing?.value || '1.5', '1.5')
-  fillKeyedSelect(els.translateProvider, TRANSLATE_PROVIDERS, els.translateProvider?.value || 'none', 'none')
+  fillKeyedSelect(els.textIndentChars, INDENT_OPTIONS, els.textIndentChars?.value || '2', '2')
+  fillKeyedSelect(els.textAlign, ALIGN_OPTIONS, els.textAlign?.value || 'justify', 'justify')
+  fillKeyedSelect(els.textBodyAfter, BODY_AFTER_OPTIONS, els.textBodyAfter?.value || '0', '0')
+  fillKeyedSelect(els.translateProvider, TRANSLATE_PROVIDERS, els.translateProvider?.value || 'free', 'free')
+  fillKeyedSelect(els.translateDirection, TRANSLATE_DIRECTIONS, els.translateDirection?.value || 'auto', 'auto')
   fillKeyedSelect(els.translateOutput, TRANSLATE_OUTPUTS, els.translateOutput?.value || 'translated', 'translated')
   fillKeyedSelect(els.aiPreset, AI_PRESETS, els.aiPreset?.value || 'zhipu', 'zhipu')
 
-  if (els.textBodyFont) {
-    const keep = els.textBodyFont.value || '宋体'
-    els.textBodyFont.innerHTML = ''
+  for (const [el, keep, fallback] of [
+    [els.textBodyFont, els.textBodyFont?.value || '宋体', '宋体'],
+    [els.textHeadingFont, els.textHeadingFont?.value || '黑体', '黑体']
+  ]) {
+    if (!el) continue
+    const current = el.value || keep
+    el.innerHTML = ''
     for (const font of FONT_OPTIONS) {
       const opt = document.createElement('option')
       opt.value = font.id
       opt.textContent = formatFontLabel(font, t)
-      els.textBodyFont.appendChild(opt)
+      el.appendChild(opt)
     }
-    els.textBodyFont.value = FONT_OPTIONS.some((f) => f.id === keep) ? keep : '宋体'
+    el.value = FONT_OPTIONS.some((f) => f.id === current) ? current : fallback
   }
 
   if (els.textBodySize) {
@@ -730,6 +796,7 @@ function syncModeUI() {
   syncedEff = eff
   if (els.codeToolbar) els.codeToolbar.hidden = eff !== 'code'
   if (els.textToolbar) els.textToolbar.hidden = eff !== 'text'
+  if (els.translateRow) els.translateRow.hidden = eff !== 'text'
   if (eff !== 'text' && els.aiPanel) els.aiPanel.hidden = true
   if (eff !== 'code' && els.captionRow) els.captionRow.hidden = true
   else if (eff === 'code') syncCaptionRow()
@@ -762,14 +829,16 @@ function syncTranslateButton() {
   if (els.translateOutput) els.translateOutput.disabled = provider === 'none'
 }
 
-/** 当前是否可用译文（引擎与原文匹配才有效） */
+/** 当前是否可用译文（引擎、方向与原文匹配才有效） */
 function activeTranslations() {
   const provider = els.translateProvider?.value || 'none'
+  const direction = els.translateDirection?.value || 'auto'
   const output = els.translateOutput?.value || 'original'
   if (provider === 'none' || output === 'original') return null
   if (!translations || !translationsMeta) return null
   if (translationsMeta.source !== els.source.value) return null
   if (translationsMeta.provider !== provider) return null
+  if (translationsMeta.direction !== direction) return null
   return translations
 }
 
@@ -779,8 +848,11 @@ function paperFormatOptions() {
     scheme: resolveSchemeId(els.textScheme?.value),
     bodyFont: els.textBodyFont?.value || '宋体',
     bodySizePt: Number(els.textBodySize?.value) || 12,
+    headingFont: els.textHeadingFont?.value || '黑体',
     lineSpacing: Number(els.textLineSpacing?.value) || 1.5,
-    firstLineIndentChars: els.textIndent?.checked ? 2 : 0,
+    firstLineIndentChars: Number(els.textIndentChars?.value ?? '2') || 0,
+    justify: (els.textAlign?.value || 'justify') === 'justify',
+    bodyAfterPt: Number(els.textBodyAfter?.value) || 0,
     translateOutput: els.translateOutput?.value || 'original',
     translations: activeTranslations(),
     codeCaptionLabel: getLocale() === 'zh' ? '代码' : 'Code',
@@ -816,7 +888,10 @@ function paperExportOptions() {
 /** 文本模式：解析 + 编号 + 建模（渲染与导出共用） */
 function buildPaperFromSource() {
   const source = els.source.value
-  const blocks = renumberBlocks(parseBlocks(source), resolveSchemeId(els.textScheme?.value))
+  const splitMode = els.textSplit?.value === 'items' || els.textSplit?.value === 'merge'
+    ? els.textSplit.value
+    : 'auto'
+  const blocks = renumberBlocks(parseBlocks(source, { splitMode }), resolveSchemeId(els.textScheme?.value))
   const paras = buildPaperModel(blocks, paperFormatOptions())
   return { blocks, paras, plainText: paperParasToPlainText(paras) }
 }
@@ -876,6 +951,7 @@ function renderPreview() {
     preview: true
   })}</div>`
   syncModeUI()
+  scheduleAutoTranslate()
 }
 
 function scheduleRender() {
@@ -957,20 +1033,25 @@ function translateErrorText(code) {
   return t('statusTranslateFail')
 }
 
-async function runTranslation() {
+async function runTranslation({ auto = false } = {}) {
   if (translating) return
   const provider = els.translateProvider?.value || 'none'
   if (provider === 'none') return
   const source = els.source.value
   if (!source.trim()) return
+  const direction = els.translateDirection?.value || 'auto'
+  const output = els.translateOutput?.value || 'original'
 
   if (provider === 'ai' && !(els.aiBaseUrl?.value && els.aiApiKey?.value)) {
+    if (auto) return
     if (els.aiPanel) els.aiPanel.hidden = false
     setStatus(t('errAiNotConfigured'), 'err')
     return
   }
 
-  const blocks = parseBlocks(source)
+  const blocks = parseBlocks(source, {
+    splitMode: els.textSplit?.value === 'items' || els.textSplit?.value === 'merge' ? els.textSplit.value : 'auto'
+  })
   /** @type {number[]} */
   const idxs = []
   /** @type {string[]} */
@@ -982,18 +1063,21 @@ async function runTranslation() {
     }
   })
   if (!texts.length) {
-    setStatus(t('statusTranslateFail'), 'err')
+    if (!auto) setStatus(t('statusTranslateFail'), 'err')
     return
   }
 
   translating = true
   syncTranslateButton()
-  setStatus(provider === 'ai'
-    ? t('statusTranslatingAi')
-    : t('statusTranslating', { done: 0, total: texts.length }))
+  if (!auto || texts.length <= 2) {
+    setStatus(provider === 'ai'
+      ? t('statusTranslatingAi')
+      : t('statusTranslating', { done: 0, total: texts.length }))
+  }
   try {
     const result = await translateTexts(texts, {
       provider,
+      direction,
       ai: {
         baseUrl: els.aiBaseUrl?.value || '',
         apiKey: els.aiApiKey?.value || '',
@@ -1005,20 +1089,38 @@ async function runTranslation() {
     const map = new Map()
     idxs.forEach((blockIndex, k) => map.set(blockIndex, result.translations[k]))
     translations = map
-    translationsMeta = { source, provider }
+    translationsMeta = { source, provider, direction }
     if (result.error) {
-      setStatus(translateErrorText(result.error), result.error === 'free-failed' ? '' : 'err')
+      if (!auto) setStatus(translateErrorText(result.error), result.error === 'free-failed' ? '' : 'err')
+    } else if (!auto || output !== 'translated') {
+      setStatus(t('statusTranslated'), 'ok')
     } else {
       setStatus(t('statusTranslated'), 'ok')
     }
     renderPreview()
   } catch (err) {
     console.error(err)
-    setStatus(t('statusTranslateFail'), 'err')
+    if (!auto) setStatus(t('statusTranslateFail'), 'err')
   } finally {
     translating = false
     syncTranslateButton()
   }
+}
+
+/** 粘贴稳定后自动翻译（默认开启；仅译文/双语且缓存失效时触发） */
+function scheduleAutoTranslate() {
+  clearTimeout(autoTranslateTimer)
+  autoTranslateTimer = setTimeout(() => {
+    const provider = els.translateProvider?.value || 'none'
+    const output = els.translateOutput?.value || 'original'
+    if (effectiveMode() !== 'text') return
+    if (provider === 'none' || output === 'original') return
+    if (!els.autoTranslate?.checked) return
+    if (!els.source.value.trim() || translating) return
+    if (activeTranslations()) return
+    if (provider === 'ai' && !(els.aiBaseUrl?.value && els.aiApiKey?.value)) return
+    runTranslation({ auto: true })
+  }, 900)
 }
 
 async function downloadDocx() {
@@ -1090,7 +1192,6 @@ if (Object.keys(savedPrefs).length) {
   if (els.language) els.language.value = 'auto'
   els.lineNumbers.checked = true
   if (els.captionEnabled) els.captionEnabled.checked = false
-  if (els.textIndent) els.textIndent.checked = true
 }
 syncFramePicker()
 syncCaptionRow()
@@ -1149,22 +1250,48 @@ const onTextSettingChange = () => {
   persistPrefs()
   renderPreview()
 }
-els.textScheme?.addEventListener('change', onTextSettingChange)
-els.textBodyFont?.addEventListener('change', onTextSettingChange)
-els.textBodySize?.addEventListener('change', onTextSettingChange)
-els.textLineSpacing?.addEventListener('change', onTextSettingChange)
-els.textIndent?.addEventListener('change', onTextSettingChange)
+for (const el of [
+  els.textScheme, els.textSplit, els.textBodyFont, els.textBodySize,
+  els.textHeadingFont, els.textLineSpacing, els.textIndentChars,
+  els.textAlign, els.textBodyAfter, els.translateDirection, els.translateOutput
+]) {
+  el?.addEventListener('change', onTextSettingChange)
+}
+/** AI 面板展开时按预设预填接口地址/模型，用户只需贴 Key */
+function prefillAiDefaults() {
+  if (els.aiBaseUrl?.value) return
+  const preset = AI_PRESETS.find((p) => p.id === (els.aiPreset?.value || 'zhipu'))
+  if (preset && preset.baseUrl) {
+    if (els.aiBaseUrl) els.aiBaseUrl.value = preset.baseUrl
+    if (els.aiModel && !els.aiModel.value) els.aiModel.value = preset.model
+  }
+}
+
 els.translateProvider?.addEventListener('change', () => {
+  // 选 AI 翻译即展开设置（并预填）；离开 AI 自动收起
+  if (els.aiPanel) {
+    if (els.translateProvider.value === 'ai') {
+      prefillAiDefaults()
+      els.aiPanel.hidden = false
+    } else {
+      els.aiPanel.hidden = true
+    }
+  }
   syncTranslateButton()
   onTextSettingChange()
 })
-els.translateOutput?.addEventListener('change', onTextSettingChange)
-els.btnTranslate?.addEventListener('click', runTranslation)
+els.autoTranslate?.addEventListener('change', onTextSettingChange)
+els.btnTranslate?.addEventListener('click', () => runTranslation())
 
 // AI 设置面板
 els.btnAiSettings?.addEventListener('click', () => {
   if (!els.aiPanel) return
-  els.aiPanel.hidden = !els.aiPanel.hidden
+  if (!els.aiPanel.hidden) {
+    els.aiPanel.hidden = true
+    return
+  }
+  prefillAiDefaults()
+  els.aiPanel.hidden = false
 })
 els.aiPreset?.addEventListener('change', () => {
   const preset = AI_PRESETS.find((p) => p.id === els.aiPreset.value)

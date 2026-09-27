@@ -79,8 +79,7 @@ export function normalizeAiBaseUrl(baseUrl) {
 /**
  * @typedef {object} TranslateOptions
  * @property {'free'|'ai'} provider
- * @property {'zh'|'en'} [target] 目标语言（缺省按原文自动反向）
- * @property {string} [email] MyMemory 提额邮箱（可选）
+ * @property {'auto'|'en2zh'|'zh2en'} [direction] 翻译方向（默认 auto：互译）
  * @property {{ baseUrl: string, apiKey: string, model?: string }} [ai]
  * @property {typeof fetch} [fetchImpl]
  * @property {(done: number, total: number) => void} [onProgress]
@@ -88,11 +87,23 @@ export function normalizeAiBaseUrl(baseUrl) {
  */
 
 /**
+ * 解析翻译语言对。
+ * @param {string[]} texts
+ * @param {'auto'|'en2zh'|'zh2en'|undefined} direction
+ */
+export function resolveLanguagePair(texts, direction) {
+  if (direction === 'en2zh') return { source: 'en', target: 'zh' }
+  if (direction === 'zh2en') return { source: 'zh', target: 'en' }
+  const source = detectTextLang(texts.join('\n'))
+  return { source, target: source === 'zh' ? 'en' : 'zh' }
+}
+
+/**
  * @param {string[]} texts
  * @param {TranslateOptions} options
  * @returns {Promise<{ translations: string[], error: string | null }>}
  */
-export async function translateTexts(texts, options) {
+export function translateTexts(texts, options) {
   if (!Array.isArray(texts) || !texts.length) return { translations: [], error: null }
   if (options.provider === 'ai') return translateViaAI(texts, options)
   return translateViaFree(texts, options)
@@ -106,8 +117,7 @@ export async function translateTexts(texts, options) {
  */
 async function translateViaFree(texts, options) {
   const fetchImpl = options.fetchImpl || ((...args) => fetch(...args))
-  const source = detectTextLang(texts.join('\n'))
-  const target = options.target || (source === 'zh' ? 'en' : 'zh')
+  const { source, target } = resolveLanguagePair(texts, options.direction)
   const srcCode = source === 'zh' ? 'zh-CN' : 'en'
   const dstCode = target === 'zh' ? 'zh-CN' : 'en'
   const langpair = `${srcCode}|${dstCode}`
@@ -208,8 +218,7 @@ async function translateViaAI(texts, options) {
   if (!ai.baseUrl || !ai.apiKey) {
     return { translations: texts.slice(), error: 'ai-not-configured' }
   }
-  const source = detectTextLang(texts.join('\n'))
-  const target = options.target || (source === 'zh' ? 'en' : 'zh')
+  const { target } = resolveLanguagePair(texts, options.direction)
   const targetName = target === 'zh' ? '简体中文' : 'English'
 
   const url = normalizeAiBaseUrl(ai.baseUrl)

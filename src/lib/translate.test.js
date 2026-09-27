@@ -4,8 +4,21 @@ import {
   splitSentences,
   normalizeAiBaseUrl,
   translateTexts,
-  parseAiTranslations
+  parseAiTranslations,
+  resolveLanguagePair
 } from './translate.js'
+
+describe('resolveLanguagePair', () => {
+  it('honors explicit direction', () => {
+    expect(resolveLanguagePair(['中文内容'], 'en2zh')).toEqual({ source: 'en', target: 'zh' })
+    expect(resolveLanguagePair(['English'], 'zh2en')).toEqual({ source: 'zh', target: 'en' })
+  })
+
+  it('auto-detects mutually', () => {
+    expect(resolveLanguagePair(['你好世界'], undefined)).toEqual({ source: 'zh', target: 'en' })
+    expect(resolveLanguagePair(['hello world'], undefined)).toEqual({ source: 'en', target: 'zh' })
+  })
+})
 
 describe('detectTextLang', () => {
   it('detects chinese and english', () => {

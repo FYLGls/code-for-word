@@ -71,6 +71,37 @@ describe('parseBlocks', () => {
     expect(blocks.map((b) => b.kind)).toEqual(['item', 'item', 'item', 'item'])
   })
 
+  it('auto-itemizes sentence-per-line groups (PDF list shape)', () => {
+    const src = [
+      '系统采用前后端分离的架构。',
+      '数据库使用 MySQL 进行持久化存储。',
+      '支持一键复制到 Word 文档。',
+      '提供论文格式自动排版能力。'
+    ].join('\n')
+    const blocks = parseBlocks(src)
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'item', 'item', 'item'])
+  })
+
+  it('still merges wrapped prose paragraphs', () => {
+    const src = ['本文提出一种新方法。', '该方法效果很好。'].join('\n')
+    const blocks = parseBlocks(src)
+    expect(blocks.map((b) => b.kind)).toEqual(['paragraph'])
+  })
+
+  it('honors explicit split modes', () => {
+    const src = ['本文提出一种新方法。', '该方法效果很好。', '实验证明了有效性。'].join('\n')
+    const merged = parseBlocks(src, { splitMode: 'merge' })
+    expect(merged.map((b) => b.kind)).toEqual(['paragraph'])
+    const itemized = parseBlocks(src, { splitMode: 'items' })
+    expect(itemized.map((b) => b.kind)).toEqual(['item', 'item', 'item'])
+  })
+
+  it('itemizes blank-line-separated short sentence lines', () => {
+    const src = ['系统包含三大模块。', '', '前端负责界面展示。', '', '后端提供数据接口。'].join('\n')
+    const blocks = parseBlocks(src)
+    expect(blocks.map((b) => b.kind)).toEqual(['item', 'item', 'item'])
+  })
+
   it('promotes a bare short line to heading when a paragraph follows', () => {
     const src = ['系统总体架构', '', '系统采用前后端分离的设计，前端使用 Vue，后端使用 Spring。'].join('\n')
     const blocks = parseBlocks(src)
