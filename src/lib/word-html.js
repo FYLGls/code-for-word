@@ -9,7 +9,13 @@ import {
   codeInsetPrefix,
   codeInsetSuffix
 } from './lines.js'
-import { resolveFrameStyle, cssFrameBorders, cssBorderStyle } from './frame.js'
+import {
+  resolveFrameStyle,
+  cssFrameBorders,
+  cssBorderStyle,
+  cssCaptionBorders,
+  cssCodeBorders
+} from './frame.js'
 import {
   shouldShowCaption,
   captionDisplayLines,
@@ -130,20 +136,25 @@ export function linesToWordHtml(lines, options) {
   const insetLeft = codeInsetPrefix(options, codeInset)
   const insetRight = codeInsetSuffix(options, codeInset)
   const preview = !!options.preview
-  const borders = cssFrameBorders(frame, accent)
-  const borderCss = cssBorderStyle(borders)
+  const showCap = shouldShowCaption(options)
+  // With caption: borders live on caption rows + code (RTF/DOCX style) so Word
+  // does not tear a single outer border between block children.
+  const borderCss = showCap
+    ? cssBorderStyle({ border: 'none' })
+    : cssBorderStyle(cssFrameBorders(frame, accent))
+  const codeBorderCss = cssBorderStyle(cssCodeBorders(frame, accent, showCap))
 
   const fontStack = `${fontName},'Courier New',monospace`
   const preBase =
     `margin:0;padding:0;border:none;background:transparent;` +
     `font-family:${fontStack};font-size:${fontSizePt}pt;` +
-    `line-height:1.35;white-space:pre;text-align:left;mso-no-proof:yes;`
+    `line-height:1.35;white-space:pre;word-wrap:normal;text-align:left;mso-no-proof:yes;`
 
   const widthCss = preview
     ? 'width:100%;max-width:100%;'
     : 'width:max-content;max-width:none;'
 
-  const body = rows.map((row, i) => {
+  const lineHtml = rows.map((row, i) => {
     const code = row.length
       ? row.map((run) => runToSpan(run, options.foreground)).join('')
       : '&nbsp;'
@@ -154,10 +165,23 @@ export function linesToWordHtml(lines, options) {
     const gapL = insetLeft ? escapeHtml(insetLeft) : ''
     const gapR = insetRight ? escapeHtml(insetRight) : ''
     return `${ln}${gapL}${code}${gapR}`
-  }).join('<br>\r\n')
+  })
+
+  // Preview: one block per line (immune to white-space collapse).
+  // Word paste: <pre> + <br> keeps a single shaded paragraph.
+  const body = preview
+    ? lineHtml
+      .map(
+        (line) =>
+          `<div class="listing-line" style="display:block;margin:0;padding:0;` +
+          `white-space:pre;font-family:${fontStack};font-size:${fontSizePt}pt;` +
+          `line-height:1.35;text-align:left;">${line}</div>`
+      )
+      .join('')
+    : lineHtml.join('<br>\n')
 
   let captionHtml = ''
-  if (shouldShowCaption(options)) {
+  if (showCap) {
     const raw = resolveCaptionLines(options)
     const display = captionDisplayLines(options)
     const capFont = resolveCaptionFont(options)
@@ -172,11 +196,14 @@ export function linesToWordHtml(lines, options) {
       const phClass = !filled && preview ? ' is-placeholder' : ''
       const weight = capBold ? 'bold' : '400'
       const style = capItalic ? 'italic' : 'normal'
+      const capBorders = cssBorderStyle(cssCaptionBorders(frame, accent, i === 0))
       return (
         `<div class="listing-caption-row${phClass}" style="` +
         `display:block;margin:0;padding:4pt 10pt;` +
-        `border:none;border-bottom:1pt solid ${accent};` +
+        `mso-margin-top-alt:0;mso-margin-bottom-alt:0;` +
+        capBorders +
         `box-sizing:border-box;` +
+        `background:${capBg};` +
         `font-family:${capFont},'SimSun','Songti SC',serif;` +
         `font-size:${capFs}pt;font-weight:${weight};font-style:${style};line-height:1.45;` +
         `color:${color};text-align:left;">` +
@@ -186,18 +213,24 @@ export function linesToWordHtml(lines, options) {
     captionHtml =
       `<div class="listing-caption" style="` +
       `display:block;margin:0;padding:0;` +
-      `background:${capBg};` +
       `border:none;` +
+      `font-size:0;` +
+      `line-height:0;` +
+      `mso-margin-top-alt:0;mso-margin-bottom-alt:0;` +
       `box-sizing:border-box;">` +
       `${rowsHtml}</div>`
   }
+
+  const codeInner = preview
+    ? body
+    : `<pre style="${preBase}">${body}</pre>`
 
   const listing =
     `<div class="listing-block listing-inside" data-frame="${frame}" style="` +
     `display:block;box-sizing:border-box;` +
     widthCss +
     borderCss +
-    `background:${bg};` +
+    `background:${showCap ? 'transparent' : bg};` +
     `padding:0;` +
     `font-family:${fontStack};` +
     `font-size:${fontSizePt}pt;` +
@@ -208,8 +241,14 @@ export function linesToWordHtml(lines, options) {
     `overflow-x:auto;` +
     `">` +
     `${captionHtml}` +
-    `<div class="listing-code" style="padding:6pt 14pt 6pt 4pt;background:${bg};">` +
-    `<pre style="${preBase}">${body}</pre>` +
+    `<div class="listing-code" style="` +
+    `display:block;margin:0;padding:6pt 14pt 6pt 4pt;` +
+    `mso-margin-top-alt:0;mso-margin-bottom-alt:0;` +
+    codeBorderCss +
+    `box-sizing:border-box;` +
+    `background:${bg};` +
+    `font-size:${fontSizePt}pt;line-height:1.35;">` +
+    `${codeInner}` +
     `</div>` +
     `</div>`
 
