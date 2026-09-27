@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { resolveFrameStyle, rtfParaBorders, cssFrameBorders } from './frame.js'
+import {
+  resolveFrameStyle,
+  rtfParaBorders,
+  cssFrameBorders,
+  cssCaptionBorders,
+  cssCodeBorders
+} from './frame.js'
 
 describe('frameStyle', () => {
   it('defaults unknown ids to bar', () => {
@@ -32,5 +38,17 @@ describe('frameStyle', () => {
     expect(rtfParaBorders('box', 4, 0, 3)).toBe('')
     expect(rtfParaBorders('box', 4, 2, 3)).toBe('')
     expect(cssFrameBorders('box', '#007ACC').border).toContain('solid')
+  })
+
+  it('caption+code CSS borders keep continuous sides without outer wrapper', () => {
+    const cap = cssCaptionBorders('box', '#007ACC', true)
+    expect(cap.borderTop).toContain('#007ACC')
+    expect(cap.borderBottom).toContain('1pt')
+    expect(cap.borderLeft).toContain('#007ACC')
+    const code = cssCodeBorders('box', '#007ACC', true)
+    expect(code.borderTop).toBe('none')
+    expect(code.borderBottom).toContain('#007ACC')
+    expect(code.borderLeft).toContain('#007ACC')
+    expect(cssCodeBorders('bar', '#007ACC', false).border).toBe('none')
   })
 })
