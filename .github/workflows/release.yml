@@ -14,10 +14,6 @@ jobs:
     env:
       ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
       ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
-      # Set these in repo Secrets after you buy a code-signing certificate
-      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-      CSC_IDENTITY_AUTO_DISCOVERY: false
     steps:
       - uses: actions/checkout@v4
 
@@ -30,8 +26,7 @@ jobs:
 
       - run: npm test
 
-      - name: Build signed Windows installer
-        run: npm run dist:win
+      - run: npm run dist:win
 
       - name: Upload Release assets
         uses: softprops/action-gh-release@v2
