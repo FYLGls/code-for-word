@@ -41,7 +41,7 @@ describe('Word HTML exporter', () => {
     expect((html.match(/listing-code/g) || []).length).toBe(1)
   })
 
-  it('paste keeps side margins via spacer cells (Word drops div margins)', () => {
+  it('paste keeps side margins via table margin-left (Word collapses spacer cells)', () => {
     const html = linesToWordHtml(
       [[{ text: 'x', color: '#000000' }]],
       {
@@ -53,9 +53,9 @@ describe('Word HTML exporter', () => {
         preview: false
       }
     )
-    expect(html).toContain('listing-margin')
-    expect(html).toMatch(/width:56\.7pt/)
-    expect(html).toContain('listing-block')
+    expect(html).toMatch(/listing-block[^>]*margin-left:56\.7pt/)
+    expect(html).toMatch(/listing-block[^>]*width:336\.6pt/)
+    expect(html).not.toContain('listing-margin')
   })
 
   it('paste uses nbsp for code inset and clamps block width to paper', () => {

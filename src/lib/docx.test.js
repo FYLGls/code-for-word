@@ -36,4 +36,22 @@ describe('DOCX exporter', () => {
     const afterCap = xml.split('代码示例')[1] || ''
     expect(afterCap.slice(0, 800)).not.toMatch(/w:pBdr[\s\S]{0,200}w:left[^>]*w:val="single"/)
   })
+
+  it('applies UI page margins to Word section pgMar (not table indent)', async () => {
+    const blob = await linesToDocxBlob(
+      [[{ text: 'x', color: '#000000' }]],
+      {
+        background: '#FFFFFF',
+        foreground: '#000000',
+        sideMarginTwips: { left: 1134, right: 1134 },
+        paperId: 'a4',
+        pageContentTwips: 9026,
+        frameStyle: 'box'
+      }
+    )
+    const xml = await docXml(blob)
+    expect(xml).toMatch(/w:pgMar[^>]*w:left="1134"/)
+    expect(xml).toMatch(/w:pgMar[^>]*w:right="1134"/)
+    expect(xml).toMatch(/w:pgSz[^>]*w:w="11906"/)
+  })
 })

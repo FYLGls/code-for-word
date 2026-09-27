@@ -14,13 +14,11 @@ import {
   VerticalAlign
 } from 'docx'
 import {
-  measureListingTwips,
-  listingSideIndents,
   applyListingStyle,
+  listingSideIndents,
   resolveCodeInsetTwips,
   codeInsetPrefix,
-  codeInsetSuffix,
-  PAGE_CONTENT_TWIPS
+  codeInsetSuffix
 } from './lines.js'
 import { resolveFrameStyle } from './frame.js'
 import {
@@ -34,6 +32,56 @@ import {
 } from './caption.js'
 
 const NIL_BORDER = { style: BorderStyle.NONE, size: 0, color: 'auto', space: 0 }
+
+/** DOCX page sizes (twips). Web download can set real page setup; RTF paste cannot. */
+const PAPER_SIZES = {
+  a4: { width: 11906, height: 16838 },
+  letter: { width: 12240, height: 15840 },
+  b5: { width: 10319, height: 14570 },
+  '16k': { width: 10473, height: 14742 },
+  a5: { width: 8391, height: 11906 },
+  fit: { width: 11906, height: 16838 }
+}
+
+/**
+ * Map UI 页边距 / 纸张 into real Word section page setup for DOCX download.
+ * (Clipboard HTML/RTF cannot change page margins of an existing document.)
+ * @param {{
+ *  paperId?: string,
+ *  sideMarginTwips?: number | null | { left?: number | null, right?: number | null },
+ *  pageContentTwips?: number | null
+ * }} options
+ */
+export function resolveDocxPageSetup(options) {
+  const id = typeof options?.paperId === 'string' ? options.paperId : 'fit'
+  const size = PAPER_SIZES[id] || PAPER_SIZES.a4
+  const custom = listingSideIndents(0, options?.sideMarginTwips, options?.pageContentTwips)
+
+  let left
+  let right
+  if (custom.left > 0 || custom.right > 0) {
+    left = custom.left || custom.right
+    right = custom.right || custom.left
+  } else if (Number.isFinite(options?.pageContentTwips) && options.pageContentTwips > 0) {
+    const pair = Math.max(0, size.width - options.pageContentTwips)
+    left = right = Math.max(720, Math.floor(pair / 2))
+  } else {
+    left = right = 1440
+  }
+
+  const maxPair = Math.max(0, size.width - 2400)
+  if (left + right > maxPair && left + right > 0) {
+    const scale = maxPair / (left + right)
+    left = Math.floor(left * scale)
+    right = Math.floor(right * scale)
+  }
+
+  return {
+    size,
+    margin: { top: 1440, bottom: 1440, left, right },
+    contentWidth: Math.max(1200, size.width - left - right)
+  }
+}
 
 /** @param {string} accentHex */
 function frameEdge(accentHex) {
@@ -110,6 +158,7 @@ const CELL_NO_BORDERS = {
  *  forceItalic?: boolean,
  *  sideMarginTwips?: number | null | { left?: number | null, right?: number | null },
  *  pageContentTwips?: number | null,
+ *  paperId?: string,
  *  codeInsetTwips?: number | null,
  *  noFill?: boolean,
  *  captionEnabled?: boolean,
@@ -134,8 +183,7 @@ export async function linesToDocxBlob(lines, options) {
   const suffix = options.lineNumberSuffix ?? '.'
   const accentHex = (options.accentLeft || '#007ACC').replace('#', '')
   const frame = resolveFrameStyle(options.frameStyle)
-  const block = measureListingTwips(rows, options)
-  const { left, right } = listingSideIndents(block, options.sideMarginTwips, options.pageContentTwips)
+  const pageSetup = resolveDocxPageSetup(options)
   const codeInset = resolveCodeInsetTwips(options.codeInsetTwips, options.pageContentTwips, options.sideMarginTwips)
   const insetLeft = codeInsetPrefix(options, codeInset)
   const insetRight = codeInsetSuffix(options, codeInset)
@@ -279,10 +327,8 @@ export async function linesToDocxBlob(lines, options) {
     })
   }
 
-  const page = (Number.isFinite(options.pageContentTwips) && options.pageContentTwips > 0)
-    ? options.pageContentTwips
-    : PAGE_CONTENT_TWIPS
-  const tableWidth = Math.max(1200, page - left - right)
+  const page = pageSetup
+  const tableWidth = page.contentWidth
 
   /** @param {InstanceType<typeof Paragraph>[]} paras */
   function cell(paras, pad) {
@@ -313,7 +359,6 @@ export async function linesToDocxBlob(lines, options) {
   const listingTable = new Table({
     width: { size: tableWidth, type: WidthType.DXA },
     columnWidths: [tableWidth],
-    indent: { size: left, type: WidthType.DXA },
     rows: tableRows,
     borders: tableBorders(frame, accentHex, !!capLines.length)
   })
@@ -322,7 +367,8 @@ export async function linesToDocxBlob(lines, options) {
     sections: [{
       properties: {
         page: {
-          margin: { top: 720, bottom: 720, left: 720, right: 720 }
+          size: page.size,
+          margin: page.margin
         }
       },
       children: [listingTable]

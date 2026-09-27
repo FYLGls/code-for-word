@@ -409,6 +409,7 @@ function currentOptions() {
     forceItalic: !!els.forceItalic?.checked,
     sideMarginTwips: resolveSideMarginTwips(),
     pageContentTwips: resolvePageContentTwips(),
+    paperId: els.paper?.value || 'fit',
     codeInsetTwips: resolveCodeInsetTwipsOption(),
     captionEnabled: !!els.captionEnabled?.checked,
     captionLines: captionLineValues.slice(),

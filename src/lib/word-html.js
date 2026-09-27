@@ -339,8 +339,8 @@ function buildPasteHtml({
       `mso-no-proof:yes;">${pre}</td></tr>`
   )
 
-  // Cap listing width to selected paper content (minus side margins) so paste
-  // roughly matches preview; Word cannot change the document's page size via HTML.
+  // Cap listing width; Word paste cannot change the document page setup —
+  // side "margins" become table margin-left + a narrower block (right gap).
   const pageTwips = options.pageContentTwips
   let widthCss = 'width:auto;max-width:none;'
   if (pageTwips != null && Number.isFinite(pageTwips) && pageTwips > 0) {
@@ -348,47 +348,21 @@ function buildPasteHtml({
     widthCss = `width:${(inner / 20).toFixed(1)}pt;max-width:${(inner / 20).toFixed(1)}pt;`
   }
 
+  // Word maps table margin-left → tblInd. Empty spacer <td>s are collapsed on paste.
+  const marginCss = left > 0
+    ? `margin-left:${(left / 20).toFixed(1)}pt;`
+    : 'margin-left:0;'
+
   const outer = cssBorderStyle(cssOuterTableBorders(frame, accent))
   const table =
     `<table class="listing-block" data-frame="${frame}" cellspacing="0" cellpadding="0" border="0" style="` +
-    `border-collapse:collapse;${outer}` +
+    `border-collapse:collapse;${outer}${marginCss}` +
     `mso-table-lspace:0pt;mso-table-rspace:0pt;mso-cellspacing:0cm;` +
     `${widthCss}">` +
     `${trs.join('')}</table>`
 
-  return wrapPasteWithSideMargins(table, left, right)
-}
-
-/**
- * Word drops CSS margins on wrapper divs around tables. Spacer <td> widths stick.
- * @param {string} innerHtml
- * @param {number} leftTwips
- * @param {number} rightTwips
- */
-function wrapPasteWithSideMargins(innerHtml, leftTwips, rightTwips) {
-  const L = Math.max(0, Math.round(leftTwips || 0))
-  const R = Math.max(0, Math.round(rightTwips || 0))
-  if (!L && !R) {
-    return (
-      `<div class="listing-outer" style="display:block;text-align:left;">${innerHtml}</div>`
-    )
-  }
-  const leftPt = (L / 20).toFixed(1)
-  const rightPt = (R / 20).toFixed(1)
-  const spacer = (pt, twips) =>
-    `<td class="listing-margin" width="${Math.max(1, Math.round(twips / 15))}" style="` +
-    `width:${pt}pt;min-width:${pt}pt;max-width:${pt}pt;` +
-    `border:none;padding:0;margin:0;font-size:1pt;line-height:1pt;mso-line-height-rule:exactly;">` +
-    `&nbsp;</td>`
-
   return (
-    `<table class="listing-outer" cellspacing="0" cellpadding="0" border="0" style="` +
-    `border-collapse:collapse;border:none;margin:0;mso-table-lspace:0pt;mso-table-rspace:0pt;">` +
-    `<tr>` +
-    (L ? spacer(leftPt, L) : '') +
-    `<td style="border:none;padding:0;margin:0;vertical-align:top;">${innerHtml}</td>` +
-    (R ? spacer(rightPt, R) : '') +
-    `</tr></table>`
+    `<div class="listing-outer" style="display:block;text-align:left;">${table}</div>`
   )
 }
 
