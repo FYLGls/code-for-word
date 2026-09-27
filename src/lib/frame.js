@@ -69,3 +69,74 @@ export function cssBorderStyle(b) {
     (b.borderLeft ? `border-left:${b.borderLeft};` : '')
   )
 }
+
+const FRAME_W = '2.25pt'
+const CAPTION_UNDER_W = '1pt'
+
+/**
+ * Caption row borders (HTML / preview). Matches RTF/DOCX: side rails + underline;
+ * box also draws the top edge on the first row.
+ * @param {FrameStyle} frame
+ * @param {string} accent
+ * @param {boolean} isFirst
+ */
+export function cssCaptionBorders(frame, accent, isFirst) {
+  const under = `${CAPTION_UNDER_W} solid ${accent}`
+  const side = `${FRAME_W} solid ${accent}`
+  if (frame === 'box') {
+    return {
+      border: 'none',
+      borderTop: isFirst ? side : 'none',
+      borderBottom: under,
+      borderLeft: side,
+      borderRight: side
+    }
+  }
+  if (frame === 'rails') {
+    return {
+      border: 'none',
+      borderBottom: under,
+      borderLeft: side,
+      borderRight: side
+    }
+  }
+  return {
+    border: 'none',
+    borderBottom: under,
+    borderLeft: side
+  }
+}
+
+/**
+ * Code block borders when a caption may sit above.
+ * With caption: no top edge for box (caption owns it) so the frame stays continuous.
+ * @param {FrameStyle} frame
+ * @param {string} accent
+ * @param {boolean} hasCaption
+ */
+export function cssCodeBorders(frame, accent, hasCaption) {
+  if (!hasCaption) {
+    return { border: 'none' }
+  }
+  const side = `${FRAME_W} solid ${accent}`
+  if (frame === 'box') {
+    return {
+      border: 'none',
+      borderTop: 'none',
+      borderBottom: side,
+      borderLeft: side,
+      borderRight: side
+    }
+  }
+  if (frame === 'rails') {
+    return {
+      border: 'none',
+      borderLeft: side,
+      borderRight: side
+    }
+  }
+  return {
+    border: 'none',
+    borderLeft: side
+  }
+}
