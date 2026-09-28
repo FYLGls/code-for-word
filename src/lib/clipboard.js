@@ -19,7 +19,7 @@ function canUseClipboardHost() {
   return false
 }
 
-async function postHost(body, timeoutMs = 2500) {
+async function postHost(body, timeoutMs = 800) {
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {

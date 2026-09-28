@@ -25,25 +25,15 @@ export function writeWindowsClipboard({ rtf, plain }) {
     fs.writeFileSync(rtfPath, rtf, { encoding: 'utf8' })
   }
 
-  // 目标应用（Word/WPS）瞬时占用剪贴板时 OpenClipboard 会失败（"Clipboard is busy"），
-  // 在同一进程内短间隔重试，避免整个复制操作失败。
   const ps = plainOnly
     ? `
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 $plain = [System.IO.File]::ReadAllText(${JSON.stringify(plainPath)}, [System.Text.Encoding]::UTF8)
+[System.Windows.Forms.Clipboard]::Clear()
 $data = New-Object System.Windows.Forms.DataObject
 $data.SetData([System.Windows.Forms.DataFormats]::UnicodeText, $false, $plain)
-$done = $false
-for ($i = 0; $i -lt 6 -and -not $done; $i++) {
-  try {
-    [System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
-    $done = $true
-  } catch {
-    Start-Sleep -Milliseconds 120
-  }
-}
-if (-not $done) { throw 'clipboard busy after retries' }
+[System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
 Write-Output 'ok'
 `
     : `
@@ -51,19 +41,11 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 $rtf = [System.IO.File]::ReadAllText(${JSON.stringify(rtfPath)}, [System.Text.Encoding]::UTF8)
 $plain = [System.IO.File]::ReadAllText(${JSON.stringify(plainPath)}, [System.Text.Encoding]::UTF8)
+[System.Windows.Forms.Clipboard]::Clear()
 $data = New-Object System.Windows.Forms.DataObject
 $data.SetData([System.Windows.Forms.DataFormats]::Rtf, $false, $rtf)
 $data.SetData([System.Windows.Forms.DataFormats]::UnicodeText, $false, $plain)
-$done = $false
-for ($i = 0; $i -lt 6 -and -not $done; $i++) {
-  try {
-    [System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
-    $done = $true
-  } catch {
-    Start-Sleep -Milliseconds 120
-  }
-}
-if (-not $done) { throw 'clipboard busy after retries' }
+[System.Windows.Forms.Clipboard]::SetDataObject($data, $true)
 Write-Output 'ok'
 `
   const result = spawnSync(
