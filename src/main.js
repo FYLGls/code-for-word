@@ -1156,11 +1156,13 @@ async function runTranslation({ auto = false } = {}) {
       })
       pendingTexts.forEach((text, k) => {
         const translated = result.translations[k]
-        translationCache.set(cacheKey(text), translated)
+        // 失败轮不写缓存：否则原文会被当成译文缓存住，重试永远命中坏结果
+        if (!result.error) translationCache.set(cacheKey(text), translated)
       })
+      // auto 模式也如实报告：否则状态永远停在"翻译中…"，用户不知道失败
       if (result.error) {
-        if (!auto) setStatus(translateErrorText(result.error), result.error === 'free-failed' ? '' : 'err')
-      } else if (!auto) {
+        setStatus(translateErrorText(result.error), result.error === 'free-failed' ? '' : 'err')
+      } else {
         setStatus(t('statusTranslated'), 'ok')
       }
     } else if (!auto) {
