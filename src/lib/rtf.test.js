@@ -250,6 +250,31 @@ describe('RTF exporter', () => {
     expect((rtf.match(/\\cbpat/g) || []).length).toBe(1)
   })
 
+  it('row underlines rule each code line and keep the outer box sides', () => {
+    const rtf = linesToRtf(
+      [
+        [{ text: 'a', color: '#000000' }],
+        [{ text: 'b', color: '#000000' }],
+        [{ text: 'c', color: '#000000' }]
+      ],
+      {
+        background: '#F5F5F5',
+        foreground: '#000000',
+        lineNumbers: false,
+        frameStyle: 'box',
+        accentLeft: '#C00000',
+        rowRules: true
+      }
+    )
+    expect(rtf).not.toContain('\\trowd')
+    expect(rtf).toMatch(/\\brdrt\\brdrs\\brdrw40/)
+    expect(rtf).toMatch(/\\brdrl\\brdrs\\brdrw40/)
+    expect(rtf).toMatch(/\\brdrr\\brdrs\\brdrw40/)
+    expect(rtf).toMatch(/\\brdrb\\brdrs\\brdrw40/)
+    expect((rtf.match(/\\brdrb\\brdrs\\brdrw20/g) || []).length).toBe(2)
+    expect((rtf.match(/\\pard\\plain/g) || []).length).toBe(3)
+  })
+
   it('puts \\li/\\ri before borders so Word keeps side margins on paste', () => {
     const rtf = linesToRtf(
       [[{ text: 'x', color: '#000000' }]],

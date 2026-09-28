@@ -126,6 +126,29 @@ function captionBorders(frame, ac, isFirst) {
  * @param {number} ac
  * @param {boolean} hasCaption
  */
+/**
+ * Per-line borders. Box + underlines uses one paragraph per line so each row
+ * can have a rule; the last line keeps the outer bottom stroke.
+ * @param {import('./frame.js').FrameStyle} frame
+ * @param {number} ac
+ * @param {number} index
+ * @param {number} total
+ * @param {boolean} hasCaption
+ * @param {boolean} rowRules
+ */
+function codeLineBorders(frame, ac, index, total, hasCaption, rowRules) {
+  const frameStroke = `\\brdrs\\brdrw40\\brdrcf${ac}`
+  const under = rowRules ? `\\brdrb\\brdrs\\brdrw20\\brdrcf${ac}` : ''
+  const side = frame === 'bar'
+    ? `\\brdrl${frameStroke}`
+    : `\\brdrl${frameStroke}\\brdrr${frameStroke}`
+  const top = frame === 'box' && index === 0 && !hasCaption ? `\\brdrt${frameStroke}` : ''
+  const bottom = frame === 'box' && index === total - 1
+    ? `\\brdrb${frameStroke}`
+    : under
+  return `${top}${side}${bottom}`
+}
+
 function codeBlockBorders(frame, ac, hasCaption) {
   const s = `\\brdrs\\brdrw40\\brdrcf${ac}`
   if (frame === 'box') {
@@ -295,8 +318,9 @@ export function linesToRtf(lines, options) {
     }).join('')
   }
 
+  const rowRules = !!options.rowRules
   let body
-  if (frame === 'box') {
+  if (frame === 'box' && !rowRules) {
     // One paragraph + \\line keeps a continuous box; per-line \\par box borders
     // have made Word reject the clipboard paste on some builds.
     const boxBorders = codeBlockBorders(frame, ac, !!capLines.length)
@@ -314,7 +338,7 @@ export function linesToRtf(lines, options) {
     body = `${head}${inner}\\par`
   } else {
     body = rows.map((row, i) => {
-      const borders = rtfParaBorders(frame, ac, i, rows.length, !!capLines.length)
+      const borders = codeLineBorders(frame, ac, i, rows.length, !!capLines.length, rowRules)
       const head = paraHead({
         left,
         right,

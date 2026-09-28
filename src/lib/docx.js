@@ -109,12 +109,11 @@ function underEdge(accentHex) {
  * Avoids per-paragraph side borders that Word draws as broken rails.
  * @param {import('./frame.js').FrameStyle} frame
  * @param {string} accentHex
- * @param {boolean} hasCaption
+ * @param {boolean} rowRules draw a rule between every row; outer frame stays on the table
  */
-function tableBorders(frame, accentHex, hasCaption) {
+function tableBorders(frame, accentHex, rowRules) {
   const f = frameEdge(accentHex)
-  const under = underEdge(accentHex)
-  const insideH = hasCaption ? under : NIL_BORDER
+  const insideH = rowRules ? underEdge(accentHex) : NIL_BORDER
   if (frame === 'box') {
     return {
       top: f,
@@ -261,6 +260,7 @@ export async function linesToDocxBlob(lines, options) {
     ]
   }))
 
+  const rowRules = !!options.rowRules
   const page = pageSetup
   // pgMar already equals 页边距, so a full-width table sits on both margin edges
   // ("顶着左右两边"). Paste keeps the frame inside the text column via \li/\ri.
@@ -288,10 +288,11 @@ export async function linesToDocxBlob(lines, options) {
    * @param {(InstanceType<typeof Paragraph>)[]} children
    * @param {number} width
    * @param {number} [span]
+   * @param {typeof CELL_NO_BORDERS | null} [borders]
    */
-  function frameCell(children, width, span) {
+  function frameCell(children, width, span, borders) {
     return new TableCell({
-      borders: CELL_NO_BORDERS,
+      borders: borders || CELL_NO_BORDERS,
       width: { size: width, type: WidthType.DXA },
       margins: zeroMargin,
       shading: cellShade,
@@ -312,11 +313,18 @@ export async function linesToDocxBlob(lines, options) {
     })
   }
 
+  const captionRule = (!rowRules && capLines.length)
+    ? {
+      ...CELL_NO_BORDERS,
+      bottom: underEdge(accentHex)
+    }
+    : null
+
   /** @type {InstanceType<typeof TableRow>[]} */
   const tableRows = []
   for (const p of captionParas) {
     tableRows.push(new TableRow({
-      children: [frameCell([p], frameWidth, options.lineNumbers ? 2 : undefined)]
+      children: [frameCell([p], frameWidth, options.lineNumbers ? 2 : undefined, captionRule)]
     }))
   }
   workRows.forEach((row, i) => {
@@ -357,7 +365,7 @@ export async function linesToDocxBlob(lines, options) {
     indent: pullLeft > 0 ? { size: pullLeft, type: WidthType.DXA } : undefined,
     layout: TableLayoutType.FIXED,
     rows: tableRows,
-    borders: tableBorders(frame, accentHex, !!capLines.length)
+    borders: tableBorders(frame, accentHex, rowRules)
   })
 
   const doc = new Document({

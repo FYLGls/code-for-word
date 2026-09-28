@@ -9,7 +9,7 @@ async function docXml(blob) {
 }
 
 describe('DOCX exporter', () => {
-  it('box+caption uses table borders (continuous outer + insideH divider)', async () => {
+  it('box+caption keeps a continuous outer frame; caption divider is not a rule on every code row', async () => {
     const blob = await linesToDocxBlob(
       [[{ text: 'def x():', color: '#0000FF' }], [{ text: '    pass', color: '#000000' }]],
       {
@@ -28,13 +28,29 @@ describe('DOCX exporter', () => {
     expect(xml).toContain('w:tbl')
     expect(xml).toContain('代码示例')
     expect(xml).toContain('def x():')
-    // Table-level borders, not per-paragraph side rails
     expect(xml).toMatch(/w:tblBorders/)
-    expect(xml).toMatch(/w:insideH[^>]*w:val="single"/)
+    expect(xml).toMatch(/w:insideH[^>]*w:val="none"/)
     expect(xml).toMatch(/w:left[^>]*w:val="single"[^>]*w:sz="24"/)
-    // No paragraph border left on caption (would cause hairlines)
-    const afterCap = xml.split('代码示例')[1] || ''
-    expect(afterCap.slice(0, 800)).not.toMatch(/w:pBdr[\s\S]{0,200}w:left[^>]*w:val="single"/)
+    expect(xml).toMatch(/w:bottom[^>]*w:val="single"[^>]*w:sz="12"/)
+  })
+
+  it('row underlines use table insideH and keep the outer frame', async () => {
+    const blob = await linesToDocxBlob(
+      [[{ text: 'a', color: '#000000' }], [{ text: 'b', color: '#000000' }]],
+      {
+        background: '#FFFFFF',
+        foreground: '#000000',
+        frameStyle: 'box',
+        accentLeft: '#C00000',
+        rowRules: true,
+        lineNumbers: false
+      }
+    )
+    const xml = await docXml(blob)
+    expect(xml).toMatch(/w:insideH[^>]*w:val="single"[^>]*w:sz="12"/)
+    expect(xml).toMatch(/w:left[^>]*w:val="single"[^>]*w:sz="24"/)
+    expect(xml).toMatch(/w:right[^>]*w:val="single"[^>]*w:sz="24"/)
+    expect(xml).toMatch(/w:insideV[^>]*w:val="none"/)
   })
 
   it('insets the frame inside the page margins the same way paste does', async () => {

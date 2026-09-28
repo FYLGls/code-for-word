@@ -13,6 +13,7 @@ const KEY = 'codepaste-prefs'
  * @property {boolean} [forceBold]
  * @property {boolean} [forceItalic]
  * @property {boolean} [lineNumbers]
+ * @property {boolean} [rowRules]
  * @property {string} [frameStyle]
  * @property {boolean} [captionEnabled]
  * @property {string} [captionFont]

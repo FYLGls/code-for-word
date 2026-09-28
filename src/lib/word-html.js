@@ -207,12 +207,18 @@ function buildPreviewHtml({
 }) {
   const borderCss = cssBorderStyle(cssFrameBorders(frame, accent))
   const body = lineHtml
-    .map(
-      (line) =>
-        `<div class="listing-line" style="display:block;margin:0;padding:0;` +
-        `white-space:pre;font-family:${fontStack};font-size:${fontSizePt}pt;` +
+    .map((line, i) => {
+      const last = i === lineHtml.length - 1
+      const rule = options.rowRules && !(frame === 'box' && last)
+        ? `border-bottom:0.75pt solid ${accent};`
+        : ''
+      const pad = options.rowRules ? 'padding:0 14pt 0 4pt;' : 'padding:0;'
+      return (
+        `<div class="listing-line" style="display:block;margin:0;${pad}` +
+        `${rule}white-space:pre;font-family:${fontStack};font-size:${fontSizePt}pt;` +
         `line-height:1.35;text-align:left;">${line}</div>`
-    )
+      )
+    })
     .join('')
 
   let captionHtml = ''
@@ -257,7 +263,7 @@ function buildPreviewHtml({
     `font-family:${fontStack};font-size:${fontSizePt}pt;line-height:1.35;` +
     `color:${options.foreground};text-align:left;mso-no-proof:yes;overflow-x:auto;">` +
     `${captionHtml}` +
-    `<div class="listing-code" style="display:block;margin:0;padding:6pt 14pt 6pt 4pt;` +
+    `<div class="listing-code" style="display:block;margin:0;padding:${options.rowRules ? '2pt 0' : '6pt 14pt 6pt 4pt'};` +
     `border:none;box-sizing:border-box;background:${bg};` +
     `font-size:${fontSizePt}pt;line-height:1.35;">${body}</div></div>`
 
@@ -342,14 +348,18 @@ function buildPasteHtml({
     const ln = options.lineNumbers
       ? `<span style="color:${lnColor};${lnWeight}${lnItalic}">${i + 1}${suffix}&nbsp;&nbsp;</span>`
       : ''
+    const last = i === rows.length - 1
+    const rule = options.rowRules && !(frame === 'box' && last)
+      ? `border-bottom:0.75pt solid ${accent};border-top:none;border-left:none;border-right:none;`
+      : ''
     const gutter = options.lineNumbers
-      ? `<td class="listing-gutter" nowrap="nowrap" style="${textCss}white-space:nowrap;">${ln}</td>`
+      ? `<td class="listing-gutter" nowrap="nowrap" style="${textCss}${rule}white-space:nowrap;">${ln}</td>`
       : ''
     const padL = codeInset > 0 ? `padding-left:${insetPt}pt;` : ''
     const padR = codeInset > 0 ? `padding-right:${insetPt}pt;` : ''
     codeTrs.push(
       `<tr>${gutter}` +
-        `<td class="listing-text" style="${textCss}${padL}${padR}">${code}</td>` +
+        `<td class="listing-text" style="${textCss}${rule}${padL}${padR}">${code}</td>` +
         `</tr>`
     )
   })
@@ -364,7 +374,7 @@ function buildPasteHtml({
 
   parts.push(
     `<div class="listing-code-wrap" style="` +
-      `border:none;margin:0;padding:6pt 8pt 6pt 4pt;background:${bg};">` +
+      `border:none;margin:0;padding:${options.rowRules ? '1pt 0' : '6pt 8pt 6pt 4pt'};background:${bg};">` +
       `${codeTable}</div>`
   )
 

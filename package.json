@@ -1,6 +1,6 @@
 {
   "name": "codepaste",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": false,
   "description": "Code for Word / 码文 — paste VS Code–styled code into Microsoft Word via native RTF (Windows desktop).",
   "type": "module",

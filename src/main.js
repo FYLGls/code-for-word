@@ -132,6 +132,7 @@ const els = {
   forceBold: document.getElementById('forceBold'),
   forceItalic: document.getElementById('forceItalic'),
   lineNumbers: document.getElementById('lineNumbers'),
+  rowRules: document.getElementById('rowRules'),
   source: document.getElementById('source'),
   preview: document.getElementById('preview'),
   metaSource: document.getElementById('metaSource'),
@@ -212,6 +213,7 @@ function collectPrefs() {
     forceBold: !!els.forceBold?.checked,
     forceItalic: !!els.forceItalic?.checked,
     lineNumbers: !!els.lineNumbers?.checked,
+    rowRules: !!els.rowRules?.checked,
     frameStyle,
     captionEnabled: !!els.captionEnabled?.checked,
     captionFont: els.captionFont?.value || DEFAULT_CAPTION_FONT,
@@ -248,6 +250,7 @@ function applyPrefs(p) {
   if (els.forceBold) els.forceBold.checked = !!p.forceBold
   if (els.forceItalic) els.forceItalic.checked = !!p.forceItalic
   if (els.lineNumbers) els.lineNumbers.checked = p.lineNumbers !== false
+  if (els.rowRules) els.rowRules.checked = p.rowRules !== false
   if (els.captionEnabled) els.captionEnabled.checked = !!p.captionEnabled
   if (els.captionBold) els.captionBold.checked = !!p.captionBold
   if (els.captionItalic) els.captionItalic.checked = !!p.captionItalic
@@ -405,6 +408,7 @@ function currentOptions() {
     fontName: els.fontFamily?.value || 'Consolas',
     fontSizePt: Number(els.fontSize.value) || 9,
     lineNumbers: els.lineNumbers.checked,
+    rowRules: els.rowRules ? els.rowRules.checked : true,
     lineNumberSuffix: '.',
     frameStyle: frameHover || frameStyle,
     forceBold: !!els.forceBold?.checked,
@@ -684,6 +688,7 @@ els.accent?.addEventListener('change', onSettingChange)
 els.forceBold?.addEventListener('change', onSettingChange)
 els.forceItalic?.addEventListener('change', onSettingChange)
 els.lineNumbers.addEventListener('change', onSettingChange)
+els.rowRules?.addEventListener('change', onSettingChange)
 els.captionEnabled?.addEventListener('change', () => {
   syncCaptionRow(true)
   onSettingChange()
