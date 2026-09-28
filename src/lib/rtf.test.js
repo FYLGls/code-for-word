@@ -250,7 +250,7 @@ describe('RTF exporter', () => {
     expect((rtf.match(/\\cbpat/g) || []).length).toBe(1)
   })
 
-  it('row underlines rule each code line and keep the outer box sides', () => {
+  it('row underlines are table rules inside a continuous outer frame', () => {
     const rtf = linesToRtf(
       [
         [{ text: 'a', color: '#000000' }],
@@ -266,13 +266,13 @@ describe('RTF exporter', () => {
         rowRules: true
       }
     )
-    expect(rtf).not.toContain('\\trowd')
-    expect(rtf).toMatch(/\\brdrt\\brdrs\\brdrw40/)
-    expect(rtf).toMatch(/\\brdrl\\brdrs\\brdrw40/)
-    expect(rtf).toMatch(/\\brdrr\\brdrs\\brdrw40/)
-    expect(rtf).toMatch(/\\brdrb\\brdrs\\brdrw40/)
-    expect((rtf.match(/\\brdrb\\brdrs\\brdrw20/g) || []).length).toBe(2)
-    expect((rtf.match(/\\pard\\plain/g) || []).length).toBe(3)
+    expect(rtf).toContain('\\trowd')
+    expect(rtf).toMatch(/\\trbrdrl\\brdrs\\brdrw40/)
+    expect(rtf).toMatch(/\\trbrdrr\\brdrs\\brdrw40/)
+    expect(rtf).toMatch(/\\trbrdrt\\brdrs\\brdrw40/)
+    expect(rtf).toMatch(/\\trbrdrb\\brdrs\\brdrw40/)
+    expect(rtf).toMatch(/\\trbrdrh\\brdrs\\brdrw20/)
+    expect((rtf.match(/\\cell\\row/g) || []).length).toBe(3)
   })
 
   it('puts \\li/\\ri before borders so Word keeps side margins on paste', () => {

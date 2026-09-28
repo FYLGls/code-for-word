@@ -306,7 +306,7 @@ export function linesToRtf(lines, options) {
   }
 
   let captionPart = ''
-  if (capLines.length) {
+  if (capLines.length && !options.rowRules) {
     captionPart = capLines.map((text, i) => {
       const borders = captionBorders(frame, ac, i === 0)
       return (
@@ -320,7 +320,40 @@ export function linesToRtf(lines, options) {
 
   const rowRules = !!options.rowRules
   let body
-  if (frame === 'box' && !rowRules) {
+  if (rowRules) {
+    // Paragraph \\brdrb between lines breaks the side rails. A single-level
+    // table matches DOCX: outer stroke on the row, thin rule between rows.
+    const cellRight = Math.max(left + 2400, geo.page - right)
+    const width = cellRight - left
+    const F = `\\brdrs\\brdrw40\\brdrcf${ac} `
+    const U = `\\brdrs\\brdrw20\\brdrcf${ac} `
+    /** @type {{ caption: boolean, last: boolean, inner: string }[]} */
+    const items = [
+      ...capLines.map((text) => ({ caption: true, last: false, inner: escapeRtf(text) })),
+      ...rows.map((row, i) => ({
+        caption: false,
+        last: i === rows.length - 1,
+        inner: lineContent(row, i)
+      }))
+    ]
+    body = items.map((item) => {
+      let def = `\\trowd\\trgaph0\\trleft${left}\\trftsWidth3\\trwWidth${width}`
+      if (frame === 'box') def += `\\trbrdrt${F}\\trbrdrl${F}\\trbrdrb${F}\\trbrdrr${F}`
+      else if (frame === 'rails') def += `\\trbrdrl${F}\\trbrdrr${F}`
+      else def += `\\trbrdrl${F}`
+      def += `\\trbrdrh${U}\\clvertalc`
+      if (frame === 'box') def += `\\clbrdrt${F}`
+      def += `\\clbrdrl${F}`
+      def += `\\clbrdrb${frame === 'box' && item.last ? F : U}`
+      if (frame !== 'bar') def += `\\clbrdrr${F}`
+      if (!noFill) def += `\\clcbpat${item.caption ? capBg : bg}`
+      def += `\\cellx${cellRight}`
+      const head = item.caption
+        ? `\\pard\\intbl\\plain\\ql\\f1\\fs${capFs}\\cf${capCf}${capB}${capI}${capShade} `
+        : `\\pard\\intbl\\plain\\ql${linePart}\\f0\\fs${fontSizeHalfPoints}${shade}\\cf${fg} `
+      return `${def}\n${head}${item.inner}\\cell\\row`
+    }).join('\n')
+  } else if (frame === 'box') {
     // One paragraph + \\line keeps a continuous box; per-line \\par box borders
     // have made Word reject the clipboard paste on some builds.
     const boxBorders = codeBlockBorders(frame, ac, !!capLines.length)
