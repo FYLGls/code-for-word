@@ -52,6 +52,10 @@ import { linesToWordHtml } from './lib/word-html.js'
 import { linesToRtf } from './lib/rtf.js'
 import { linesToDocxBlob } from './lib/docx.js'
 import { writeClipboard, downloadBlob, clipboardHostReady } from './lib/clipboard.js'
+import { detectMode } from './lib/detect.js'
+import { parseBlocks, renumberBlocks, resolveSchemeId } from './lib/blocks.js'
+import { buildPaperModel, paperParasToPlainText } from './lib/paper-format.js'
+import { paperToRtf, paperToWordHtml, paperToDocxBlob } from './lib/paper-export.js'
 import { loadPrefs, savePrefs } from './prefs.js'
 import { githubHome, openExternal } from './promo.js'
 
@@ -119,6 +123,71 @@ if __name__ == "__main__":
     print(binary_search(nums, 4))   # -1
 `
 
+const SAMPLE_TEXT = `1 引言
+
+随着深度学习技术的发展，文本分类任务取得了显著进展。
+传统方法依赖人工特征工程，泛化能力有限。
+
+1.1 研究背景
+
+本文提出一种端到端的分类模型，核心流程如下代码所示。
+
+\`\`\`python
+def train(model, data):
+    model.fit(data)
+    return model.evaluate(data)
+\`\`\`
+
+1.2 研究意义
+
+实验表明该方法在多个数据集上均有效。
+
+2 相关工作
+
+- 注意力机制广泛应用于自然语言处理
+- 预训练语言模型显著提升下游任务表现
+- 轻量化部署成为新的研究热点
+`
+
+const SCHEME_OPTIONS = [
+  { id: 'academic', labelKey: 'schemeAcademic' },
+  { id: 'thesis', labelKey: 'schemeThesis' },
+  { id: 'official', labelKey: 'schemeOfficial' },
+  { id: 'none', labelKey: 'schemeNone' }
+]
+
+const SPLIT_OPTIONS = [
+  { id: 'auto', labelKey: 'splitAuto' },
+  { id: 'items', labelKey: 'splitItems' },
+  { id: 'lines', labelKey: 'splitLines' },
+  { id: 'merge', labelKey: 'splitMerge' }
+]
+
+const LATIN_FONT_OPTIONS = ['Times New Roman', 'Arial', 'Calibri', 'Cambria', 'Georgia', 'Helvetica']
+
+const INDENT_OPTIONS = [
+  { id: '2', labelKey: 'indent2' },
+  { id: '4', labelKey: 'indent4' },
+  { id: '0', labelKey: 'indent0' }
+]
+
+const ALIGN_OPTIONS = [
+  { id: 'justify', labelKey: 'alignJustify' },
+  { id: 'left', labelKey: 'alignLeft' }
+]
+
+const BODY_AFTER_OPTIONS = [
+  { id: '0', labelKey: 'after0', pt: 0 },
+  { id: '6', labelKey: 'afterHalf', pt: 6 },
+  { id: '12', labelKey: 'afterLine', pt: 12 }
+]
+
+const LINE_SPACING_OPTIONS = [
+  { id: '1', labelKey: 'spacing1' },
+  { id: '1.5', labelKey: 'spacing15' },
+  { id: '2', labelKey: 'spacing2' }
+]
+
 const els = {
   language: document.getElementById('language'),
   fontFamily: document.getElementById('fontFamily'),
@@ -158,7 +227,25 @@ const els = {
   captionBold: document.getElementById('captionBold'),
   captionItalic: document.getElementById('captionItalic'),
   captionAddRow: document.getElementById('captionAddRow'),
-  captionRemoveRow: document.getElementById('captionRemoveRow')
+  captionRemoveRow: document.getElementById('captionRemoveRow'),
+  modeSwitch: document.getElementById('modeSwitch'),
+  detectChip: document.getElementById('detectChip'),
+  codeToolbar: document.getElementById('codeToolbar'),
+  textToolbar: document.getElementById('textToolbar'),
+  textScheme: document.getElementById('textScheme'),
+  textSplit: document.getElementById('textSplit'),
+  textBodyFont: document.getElementById('textBodyFont'),
+  textLatinFont: document.getElementById('textLatinFont'),
+  textBodySize: document.getElementById('textBodySize'),
+  textHeadingFont: document.getElementById('textHeadingFont'),
+  textLineSpacing: document.getElementById('textLineSpacing'),
+  textIndentChars: document.getElementById('textIndentChars'),
+  textAlign: document.getElementById('textAlign'),
+  textBodyAfter: document.getElementById('textBodyAfter'),
+  textBold: document.getElementById('textBold'),
+  textItalic: document.getElementById('textItalic'),
+  textUnderline: document.getElementById('textUnderline'),
+  sourceLabel: document.getElementById('sourceLabel')
 }
 
 /** @type {string[]} */
@@ -175,6 +262,13 @@ let exportBusy = false
 /** @type {{ lines: import('./themes.js').StyledRun[][], language: string, theme: import('./themes.js').Theme } | null} */
 let latest = null
 let selectsReady = false
+
+/** @type {'auto' | 'code' | 'text'} */
+let mode = 'code'
+/** @type {'code' | 'text' | 'mixed'} */
+let textDetect = 'text'
+/** @type {{ paras: import('./lib/paper-format.js').PaperPara[], plainText: string } | null} */
+let latestPaper = null
 
 function setStatus(text, kind = '') {
   els.status.textContent = text
@@ -221,7 +315,21 @@ function collectPrefs() {
     captionBg: els.captionBg?.value || 'grey',
     captionBold: !!els.captionBold?.checked,
     captionItalic: !!els.captionItalic?.checked,
-    captionLines: captionLineValues.slice()
+    captionLines: captionLineValues.slice(),
+    mode,
+    textScheme: els.textScheme?.value || 'academic',
+    textSplit: els.textSplit?.value || 'auto',
+    textBodyFont: els.textBodyFont?.value || '宋体',
+    textLatinFont: els.textLatinFont?.value || 'Times New Roman',
+    textBodySize: els.textBodySize?.value || '12',
+    textHeadingFont: els.textHeadingFont?.value || '黑体',
+    textLineSpacing: els.textLineSpacing?.value || '1.5',
+    textIndentChars: els.textIndentChars?.value || '2',
+    textAlign: els.textAlign?.value || 'justify',
+    textBodyAfter: els.textBodyAfter?.value || '0',
+    textBold: !!els.textBold?.checked,
+    textItalic: !!els.textItalic?.checked,
+    textUnderline: !!els.textUnderline?.checked
   }
 }
 
@@ -247,6 +355,25 @@ function applyPrefs(p) {
   setVal(els.captionFont, p.captionFont)
   setVal(els.captionColor, p.captionColor)
   setVal(els.captionBg, p.captionBg)
+  setVal(els.textScheme, p.textScheme)
+  setVal(els.textSplit, p.textSplit)
+  setVal(els.textBodyFont, p.textBodyFont)
+  setVal(els.textLatinFont, p.textLatinFont)
+  setVal(els.textBodySize, p.textBodySize)
+  setVal(els.textHeadingFont, p.textHeadingFont)
+  setVal(els.textLineSpacing, p.textLineSpacing)
+  setVal(els.textIndentChars, p.textIndentChars)
+  setVal(els.textAlign, p.textAlign)
+  setVal(els.textBodyAfter, p.textBodyAfter)
+  if (els.textBold) els.textBold.checked = !!p.textBold
+  if (els.textItalic) els.textItalic.checked = !!p.textItalic
+  if (els.textUnderline) els.textUnderline.checked = !!p.textUnderline
+  // 兼容旧版布尔 textIndent
+  if (p.textIndentChars == null && p.textIndent === false && els.textIndentChars) {
+    els.textIndentChars.value = '0'
+  }
+  // 文本模式默认关闭：只接受用户明确保存过的选择，非法值回落代码模式
+  if (p.mode) mode = p.mode === 'code' || p.mode === 'text' || p.mode === 'auto' ? p.mode : 'code'
   if (els.forceBold) els.forceBold.checked = !!p.forceBold
   if (els.forceItalic) els.forceItalic.checked = !!p.forceItalic
   if (els.lineNumbers) els.lineNumbers.checked = p.lineNumbers !== false
@@ -319,9 +446,61 @@ function refillLabeledSelects() {
   const keepCapColor = els.captionColor?.value || 'black'
   fillKeyedSelect(els.captionBg, CAPTION_BACKGROUND_OPTIONS, keepCapBg, 'grey')
   fillKeyedSelect(els.captionColor, CAPTION_COLOR_OPTIONS, keepCapColor, 'black')
+  refillTextSelects()
   refillFontSizes()
   refillFontSelects()
   syncCaptionLineLabels()
+}
+
+/** 文本模式选项下拉（编号/分段/字体字号/行距/缩进/对齐/段距） */
+function refillTextSelects() {
+  fillKeyedSelect(els.textScheme, SCHEME_OPTIONS, els.textScheme?.value || 'academic', 'academic')
+  fillKeyedSelect(els.textSplit, SPLIT_OPTIONS, els.textSplit?.value || 'auto', 'auto')
+  fillKeyedSelect(els.textLineSpacing, LINE_SPACING_OPTIONS, els.textLineSpacing?.value || '1.5', '1.5')
+  fillKeyedSelect(els.textIndentChars, INDENT_OPTIONS, els.textIndentChars?.value || '2', '2')
+  fillKeyedSelect(els.textAlign, ALIGN_OPTIONS, els.textAlign?.value || 'justify', 'justify')
+  fillKeyedSelect(els.textBodyAfter, BODY_AFTER_OPTIONS, els.textBodyAfter?.value || '0', '0')
+
+  for (const [el, keep, fallback] of [
+    [els.textBodyFont, els.textBodyFont?.value || '宋体', '宋体'],
+    [els.textHeadingFont, els.textHeadingFont?.value || '黑体', '黑体']
+  ]) {
+    if (!el) continue
+    const current = el.value || keep
+    el.innerHTML = ''
+    for (const font of FONT_OPTIONS) {
+      const opt = document.createElement('option')
+      opt.value = font.id
+      opt.textContent = formatFontLabel(font, t)
+      el.appendChild(opt)
+    }
+    el.value = FONT_OPTIONS.some((f) => f.id === current) ? current : fallback
+  }
+
+  if (els.textLatinFont) {
+    const keep = els.textLatinFont.value || 'Times New Roman'
+    els.textLatinFont.innerHTML = ''
+    for (const font of LATIN_FONT_OPTIONS) {
+      const opt = document.createElement('option')
+      opt.value = font
+      opt.textContent = font
+      els.textLatinFont.appendChild(opt)
+    }
+    els.textLatinFont.value = LATIN_FONT_OPTIONS.includes(keep) ? keep : 'Times New Roman'
+  }
+
+  if (els.textBodySize) {
+    const keep = els.textBodySize.value || '12'
+    els.textBodySize.innerHTML = ''
+    const locale = getLocale()
+    for (const size of FONT_SIZE_OPTIONS) {
+      const opt = document.createElement('option')
+      opt.value = String(size.pt)
+      opt.textContent = formatFontSizeLabel(size, locale)
+      els.textBodySize.appendChild(opt)
+    }
+    els.textBodySize.value = FONT_SIZE_OPTIONS.some((s) => String(s.pt) === keep) ? keep : '12'
+  }
 }
 
 function refillFontSelects() {
@@ -546,28 +725,181 @@ function countStats(code) {
   return { lines, chars: [...normalized].length }
 }
 
-function renderPreview() {
-  const code = els.source.value
-  latest = codeToStyledLines(code, els.language.value, THEME_ID, hljs)
-  const opts = currentOptions()
-  const { lines, chars } = countStats(code)
-  els.metaSource.textContent = code ? t('metaCount', { lines, chars }) : t('source')
-  const sizeOpt = FONT_SIZE_OPTIONS.find((o) => o.pt === opts.fontSizePt)
-  const sizeLabel = sizeOpt ? formatFontSizeLabel(sizeOpt, getLocale()) : `${opts.fontSizePt} pt`
-  els.metaPreview.textContent = code ? `${latest.language} · ${opts.fontName} · ${sizeLabel}` : t('preview')
+/** 自动模式：识别为代码走代码管线，否则（文本/混合）走论文管线；空内容时保持代码外观（默认体验） */
+function effectiveMode() {
+  if (mode === 'auto') {
+    if (!els.source?.value.trim()) return 'code'
+    return textDetect === 'code' ? 'code' : 'text'
+  }
+  return mode
+}
 
-  const wrap = els.preview
-  wrap.dataset.mode = !opts.noFill && /^#1[Ee]1[Ee]1[Ee]$/i.test(opts.background) ? 'dark' : 'light'
-  wrap.style.background = ''
-  if (!code) {
-    wrap.innerHTML = `<div class="preview-empty">${t('previewEmpty')}</div>`
+function setMode(next, options = {}) {
+  const target = next === 'code' || next === 'text' ? next : 'auto'
+  mode = target
+  els.modeSwitch?.querySelectorAll('.mode-btn').forEach((btn) => {
+    const on = btn.getAttribute('data-mode') === mode
+    btn.classList.toggle('is-active', on)
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false')
+  })
+  syncModeUI()
+  if (options.persist !== false) persistPrefs()
+  renderPreview()
+}
+
+/** 上次同步时的有效模式；未变化时跳过重建（避免题注输入框每次渲染丢焦点） */
+let syncedEff = null
+
+function syncModeUI() {
+  const eff = effectiveMode()
+  if (eff === syncedEff) {
+    syncDetectChip()
     return
   }
-  wrap.innerHTML = `<div class="preview-sheet">${linesToWordHtml(latest.lines, {
-    ...opts,
-    preview: true,
-    captionPlaceholder: t('captionPlaceholder')
+  syncedEff = eff
+  if (els.codeToolbar) els.codeToolbar.hidden = eff !== 'code'
+  if (els.textToolbar) els.textToolbar.hidden = eff !== 'text'
+  if (eff !== 'code' && els.captionRow) els.captionRow.hidden = true
+  else if (eff === 'code') syncCaptionRow()
+  if (els.sourceLabel) els.sourceLabel.textContent = t(eff === 'text' ? 'sourceText' : 'source')
+  if (els.source) els.source.placeholder = t(eff === 'text' ? 'placeholderText' : 'placeholder')
+  syncDetectChip()
+}
+
+function syncDetectChip() {
+  if (!els.detectChip) return
+  if (mode !== 'auto' || !els.source.value.trim()) {
+    els.detectChip.hidden = true
+    return
+  }
+  const key = textDetect === 'code' ? 'detectCode' : 'detectText'
+  els.detectChip.hidden = false
+  els.detectChip.textContent = t(key)
+  els.detectChip.dataset.kind = textDetect
+}
+
+/** 文本模式排版选项（buildPaperModel 用） */
+function paperFormatOptions() {
+  return {
+    scheme: resolveSchemeId(els.textScheme?.value),
+    bodyFont: els.textBodyFont?.value || '宋体',
+    latinFont: els.textLatinFont?.value || 'Times New Roman',
+    bodySizePt: Number(els.textBodySize?.value) || 12,
+    headingFont: els.textHeadingFont?.value || '黑体',
+    lineSpacing: Number(els.textLineSpacing?.value) || 1.5,
+    firstLineIndentChars: Number(els.textIndentChars?.value ?? '2') || 0,
+    justify: (els.textAlign?.value || 'justify') === 'justify',
+    bodyAfterPt: Number(els.textBodyAfter?.value) || 0,
+    bodyBold: !!els.textBold?.checked,
+    bodyItalic: !!els.textItalic?.checked,
+    bodyUnderline: !!els.textUnderline?.checked,
+    codeCaptionLabel: getLocale() === 'zh' ? '代码' : 'Code',
+    highlight: (code, language) => codeToStyledLines(code, language || 'auto', THEME_ID, hljs).lines,
+    code: {
+      fontName: els.fontFamily?.value || 'Consolas',
+      fontSizePt: Math.max(9, Math.min(Number(els.fontSize?.value) || 10.5, 12)),
+      lineNumbers: !!els.lineNumbers?.checked
+    }
+  }
+}
+
+/** 嵌入代码块的导出选项（复用代码模式的底色/边框/标识色设置） */
+function paperExportOptions() {
+  const id = els.background?.value || 'paper'
+  const preset = BACKGROUND_OPTIONS.find((b) => b.id === id)
+  const noFill = preset?.color === 'none'
+  const color = noFill ? 'none' : (preset?.color || '#F5F5F5')
+  return {
+    background: color,
+    codeBackground: noFill ? '#FFFFFF' : (color === 'none' ? '#F5F5F5' : color),
+    codeNoFill: noFill,
+    noFill,
+    accentLeft: resolveAccent(),
+    lineNumbers: !!els.lineNumbers?.checked,
+    frameStyle: frameHover || frameStyle,
+    paperId: els.paper?.value || 'fit',
+    sideMarginTwips: resolveSideMarginTwips(),
+    pageContentTwips: resolvePageContentTwips()
+  }
+}
+
+/** 文本模式：解析 + 编号 + 建模（渲染与导出共用） */
+function buildPaperFromSource() {
+  const source = els.source.value
+  const splitMode = ['items', 'merge', 'lines'].includes(els.textSplit?.value)
+    ? els.textSplit.value
+    : 'auto'
+  const blocks = renumberBlocks(parseBlocks(source, { splitMode }), resolveSchemeId(els.textScheme?.value))
+  const paras = buildPaperModel(blocks, paperFormatOptions())
+  return { blocks, paras, plainText: paperParasToPlainText(paras) }
+}
+
+function renderPreview() {
+  const code = els.source.value
+  if (code.trim()) {
+    // 自动识别硬护栏：只要存在任何代码票（或 hljs 高置信识别出语言）就按代码处理，
+    // 保证贴代码永远不会被自动改成正文；误判方向只会把散文留在代码模式。
+    textDetect = detectMode(code, {
+      autoDetect: (src) => {
+        try {
+          const r = hljs.highlightAuto(src)
+          return { language: r.language, relevance: r.relevance }
+        } catch {
+          return null
+        }
+      }
+    })
+  }
+  const eff = effectiveMode()
+  const { lines, chars } = countStats(code)
+  els.metaSource.textContent = code ? t('metaCount', { lines, chars }) : t(eff === 'text' ? 'sourceText' : 'source')
+
+  const wrap = els.preview
+  if (!code.trim()) {
+    latest = null
+    latestPaper = null
+    wrap.dataset.mode = 'light'
+    wrap.style.background = ''
+    wrap.innerHTML = `<div class="preview-empty">${t('previewEmpty')}</div>`
+    els.metaPreview.textContent = t('preview')
+    syncModeUI()
+    return
+  }
+
+  if (eff === 'code') {
+    latest = codeToStyledLines(code, els.language.value, THEME_ID, hljs)
+    const opts = currentOptions()
+    const sizeOpt = FONT_SIZE_OPTIONS.find((o) => o.pt === opts.fontSizePt)
+    const sizeLabel = sizeOpt ? formatFontSizeLabel(sizeOpt, getLocale()) : `${opts.fontSizePt} pt`
+    els.metaPreview.textContent = `${latest.language} · ${opts.fontName} · ${sizeLabel}`
+    wrap.dataset.mode = !opts.noFill && /^#1[Ee]1[Ee]1[Ee]$/i.test(opts.background) ? 'dark' : 'light'
+    wrap.style.background = ''
+    wrap.innerHTML = `<div class="preview-sheet">${linesToWordHtml(latest.lines, {
+      ...opts,
+      preview: true,
+      captionPlaceholder: t('captionPlaceholder')
+    })}</div>`
+    syncModeUI()
+    return
+  }
+
+  // 文本 / 论文管线
+  latest = null
+  const built = buildPaperFromSource()
+  latestPaper = { paras: built.paras, plainText: built.plainText }
+  const fmt = paperFormatOptions()
+  const schemeId = resolveSchemeId(els.textScheme?.value)
+  const schemeLabel = t(SCHEME_OPTIONS.find((s) => s.id === schemeId)?.labelKey || 'schemeAcademic')
+  const sizeOpt = FONT_SIZE_OPTIONS.find((o) => o.pt === fmt.bodySizePt)
+  const sizeLabel = sizeOpt ? formatFontSizeLabel(sizeOpt, getLocale()) : `${fmt.bodySizePt} pt`
+  els.metaPreview.textContent = `${schemeLabel} · ${fmt.bodyFont} · ${sizeLabel}`
+  wrap.dataset.mode = 'light'
+  wrap.style.background = ''
+  wrap.innerHTML = `<div class="preview-sheet preview-paper">${paperToWordHtml(built.paras, {
+    ...paperExportOptions(),
+    preview: true
   })}</div>`
+  syncModeUI()
 }
 
 function scheduleRender() {
@@ -586,13 +918,23 @@ async function copyToWord() {
     return
   }
   exportBusy = true
+  renderPreview()
+  const eff = effectiveMode()
+  const desktop = typeof window !== 'undefined' ? window.codepasteDesktop : null
+  const skipHtml = !!desktop?.isDesktop // 桌面端走原生 RTF 通道，无需生成 HTML
   try {
-    const opts = currentOptions()
-    latest = codeToStyledLines(els.source.value, els.language.value, THEME_ID, hljs)
-    const rtf = linesToRtf(latest.lines, opts)
-    const desktop = typeof window !== 'undefined' ? window.codepasteDesktop : null
-    const html = desktop?.isDesktop ? '' : linesToWordHtml(latest.lines, opts)
-    const result = await writeClipboard({ rtf, html, plain: els.source.value })
+    let result
+    if (eff === 'text' && latestPaper) {
+      const exportOpts = paperExportOptions()
+      const rtf = paperToRtf(latestPaper.paras, exportOpts)
+      const html = skipHtml ? '' : paperToWordHtml(latestPaper.paras, exportOpts)
+      result = await writeClipboard({ rtf, html, plain: latestPaper.plainText })
+    } else {
+      const opts = currentOptions()
+      const rtf = linesToRtf(latest.lines, opts)
+      const html = skipHtml ? '' : linesToWordHtml(latest.lines, opts)
+      result = await writeClipboard({ rtf, html, plain: els.source.value })
+    }
     if (result.via === 'native-rtf') setStatus(t('statusCopied'), 'ok')
     else if (
       result.via === 'browser-html' ||
@@ -613,6 +955,7 @@ function stampName() {
   return new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
 }
 
+
 async function downloadDocx() {
   if (exportBusy) return
   if (!els.source.value.trim()) {
@@ -620,10 +963,16 @@ async function downloadDocx() {
     return
   }
   exportBusy = true
+  renderPreview()
+  const eff = effectiveMode()
   try {
-    latest = codeToStyledLines(els.source.value, els.language.value, THEME_ID, hljs)
-    const blob = await linesToDocxBlob(latest.lines, currentOptions())
-    downloadBlob(blob, `listing-${stampName()}.docx`)
+    if (eff === 'text' && latestPaper) {
+      const blob = await paperToDocxBlob(latestPaper.paras, paperExportOptions())
+      downloadBlob(blob, `paper-${stampName()}.docx`)
+    } else {
+      const blob = await linesToDocxBlob(latest.lines, currentOptions())
+      downloadBlob(blob, `listing-${stampName()}.docx`)
+    }
     setStatus(t('statusDocx'), 'ok')
   } catch (err) {
     console.error(err)
@@ -646,9 +995,22 @@ function applyLocale(id) {
   applyStaticI18n()
   fillSelects()
   syncFramePicker()
+  syncModeUI()
   refreshHost()
   renderPreview()
   syncDesktopLocale()
+}
+
+/** 网页版（GitHub Pages）剪贴板质量不稳：主推「下载 DOCX」；桌面版两个都是主按钮 */
+function syncActionButtons() {
+  if (!els.btnCopy || !els.btnDownload) return
+  const desktop = typeof window !== 'undefined' && window.codepasteDesktop?.isDesktop
+  const localHttp = typeof location !== 'undefined'
+    && location.protocol === 'http:'
+    && ['localhost', '127.0.0.1'].includes(location.hostname)
+  const preferDownload = !(desktop || localHttp)
+  els.btnCopy.classList.toggle('ghost', preferDownload)
+  els.btnCopy.classList.toggle('primary', !preferDownload)
 }
 
 const startLocale = detectLocale()
@@ -670,6 +1032,8 @@ if (Object.keys(savedPrefs).length) {
 }
 syncFramePicker()
 syncCaptionRow()
+setMode(mode, { persist: false })
+syncActionButtons()
 
 function onSettingChange() {
   persistPrefs()
@@ -712,6 +1076,29 @@ els.btnDownload?.addEventListener('click', downloadDocx)
 els.brandHome?.addEventListener('click', openGitHubHome)
 els.btnGitHub?.addEventListener('click', openGitHubHome)
 
+// 模式切换（自动 / 代码 / 文本）
+els.modeSwitch?.querySelectorAll('.mode-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    setMode(btn.getAttribute('data-mode') || 'auto')
+  })
+})
+
+// 文本模式设置
+const onTextSettingChange = () => {
+  persistPrefs()
+  renderPreview()
+}
+for (const el of [
+  els.textScheme, els.textSplit, els.textBodyFont, els.textLatinFont, els.textBodySize,
+  els.textHeadingFont, els.textLineSpacing, els.textIndentChars,
+  els.textAlign, els.textBodyAfter
+]) {
+  el?.addEventListener('change', onTextSettingChange)
+}
+for (const el of [els.textBold, els.textItalic, els.textUnderline]) {
+  el?.addEventListener('change', onTextSettingChange)
+}
+
 els.btnFrame?.addEventListener('click', (e) => {
   e.stopPropagation()
   if (els.framePanel?.hidden) openFramePanel()
@@ -741,8 +1128,13 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeFramePanel()
 })
 els.btnSample.addEventListener('click', () => {
-  els.source.value = SAMPLE
-  els.language.value = 'python'
+  const eff = effectiveMode()
+  if (eff === 'text') {
+    els.source.value = SAMPLE_TEXT
+  } else {
+    els.source.value = SAMPLE
+    els.language.value = 'python'
+  }
   renderPreview()
   setStatus(t('statusSample'))
 })

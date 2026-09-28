@@ -1,0 +1,40 @@
+用户反馈系统核心代码
+
+const feedbackStore = {
+  state: {
+    items: [],
+    filter: 'all' // all | pending | done
+  },
+
+  submit(text) {
+    if (!text.trim()) {
+      throw new Error('反馈内容不能为空')
+    }
+    const item = { id: Date.now(), text, status: 'pending' }
+    this.state.items.unshift(item)
+    return item
+  },
+
+  resolve(id) {
+    const item = this.state.items.find((i) => i.id === id)
+    if (item) item.status = 'done'
+  }
+}
+
+export function useFeedback() {
+  const store = reactive(feedbackStore)
+  const pendingCount = computed(() =>
+    store.state.items.filter((i) => i.status === 'pending').length
+  )
+  return { store, pendingCount }
+}
+
+// 以下为服务端接口
+async function postFeedback(text) {
+  const res = await fetch('/api/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text })
+  })
+  if (!res.ok) throw new Error(`提交失败：${res.status}`)
+  return res.json()

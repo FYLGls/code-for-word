@@ -1,0 +1,90 @@
+基于深度学习的中文文本分类方法研究
+
+摘  要
+
+随着互联网技术的快速发展，网络文本数据呈爆炸式增长。
+如何高效地对海量文本进行自动分类已成为自然语言处理领域的重要课题。
+本文针对传统机器学习方法依赖人工特征工程的问题，提出了一种基于预训练语言模型的端到端文本分类方法。
+论文主要工作包括模型结构设计、训练策略优化和实验验证三个方面。
+在多个公开中文数据集上的实验结果表明，所提方法的分类准确率相比基线模型提升了 3.2 个百分点。
+
+关键词：文本分类；预训练语言模型；深度学习；注意力机制
+
+Abstract
+
+With the rapid development of Internet technology, web text data is growing explosively.
+Automatic classification of massive texts has become an important topic.
+This paper proposes an end-to-end method based on pre-trained language models.
+
+Key words: text classification; pre-trained model; deep learning
+
+第1章 绪论
+
+1.1 研究背景与意义
+
+文本分类是自然语言处理领域的基础任务之一。
+其应用场景涵盖垃圾邮件识别、新闻自动分类、情感分析等多个方面。
+近年来，基于 Transformer 架构的预训练语言模型取得了巨大成功。
+
+1.2 国内外研究现状
+
+早期研究主要采用朴素贝叶斯和支持向量机等传统方法。
+随着 Word2Vec、GloVe 等词向量技术的出现，深度学习方法逐渐成为主流。
+BERT、RoBERTa 等预训练模型进一步刷新了各项任务的最好成绩。
+
+1.2.1 中文预训练模型
+
+中文场景下，哈工大讯飞发布了 LTP 系列，百度发布了 ERNIE。
+这些模型在中文分词、命名实体识别等任务上表现出色。
+
+第2章 相关技术介绍
+
+2.1 注意力机制
+
+注意力机制允许模型在处理每个位置时动态关注输入的其他位置。
+其计算过程可表示为如下公式：
+
+$$Attention(Q, K, V) = softmax(QK^T / \sqrt{d_k})V$$
+
+2.2 预训练语言模型
+
+预训练阶段通常采用掩码语言建模和下一句预测两种任务。
+微调阶段则在下游任务的标注数据上继续训练。
+
+第3章 实验与分析
+
+3.1 实验设置
+
+实验数据集为 THUCNews 的子集，共包含 10 个类别的新闻文本。
+训练集、验证集与测试集的比例为 8:1:1。
+
+文本预处理流程如下代码所示：
+
+```python
+def 预处理(文本列表):
+    分词结果 = [jieba.lcut(t) for t in 文本列表]
+    return [" ".join(tokens) for tokens in 分词结果]
+```
+
+3.2 实验结果
+
+各模型在测试集上的表现如表 3-1 所示。
+
+表 3-1 不同模型在 THUCNews 上的分类性能对比
+
+从表 3-1 可以看出，本文方法在准确率与 F1 值上均取得最优结果。
+系统整体架构如图 3-1 所示。
+
+图 3-1 系统整体架构图
+
+第4章 总结与展望
+
+本文提出了基于预训练语言模型的中文文本分类方法。
+实验验证了方法的有效性。未来将探索模型压缩与多任务学习。
+
+参考文献
+
+[1] 张三, 李四. 基于BERT的中文文本分类研究[J]. 计算机学报, 2023, 46(2): 100-110.
+[2] 王五. Transformer架构综述[J]. 软件学报, 2022, 33(5): 1-25.
+[3] Devlin J, Chang M W, Lee K, et al. BERT: Pre-training of deep bidirectional transformers[C]//NAACL. 2019: 4171-4186.
+[4] Mikolov T, Sutskever I, Chen K, et al. Distributed representations of words and phrases[C]//NIPS. 2013: 3111-3119.

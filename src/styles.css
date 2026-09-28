@@ -821,3 +821,67 @@ textarea:focus { background: #fff; }
   .desk-wash, .enter, .preview-sheet, .foot-star, .foot-star-hint { animation: none !important; }
   .btn { transition: none; }
 }
+
+/* —— Mode switch（自动 / 代码 / 文本）—— */
+.toolbar-row[hidden] { display: none !important; }
+
+.mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 52px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  box-sizing: border-box;
+}
+.mode-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 40px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 3px);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  white-space: nowrap;
+}
+.mode-btn:hover { color: var(--ink); background: rgba(0, 0, 0, 0.035); }
+.mode-btn.is-active {
+  background: var(--ink);
+  color: #fff;
+}
+.detect-chip {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.detect-chip[data-kind='code'] { border-color: var(--accent); color: var(--accent); }
+.detect-chip[data-kind='mixed'] { border-color: #b8860b; color: #9a6b00; }
+
+/* —— 论文预览 —— */
+.preview-sheet.preview-paper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.preview-paper .paper-doc { width: 100%; }
+.preview-paper .paper-p { overflow-wrap: anywhere; }
+.preview-paper .paper-codecaption { letter-spacing: 0.04em; }
+
+.mode-row { display: flex; gap: 8px; align-items: center; }
+.mode-row .mode-switch { flex: 0 1 300px; }

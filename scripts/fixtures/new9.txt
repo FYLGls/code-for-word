@@ -1,0 +1,36 @@
+多语言产品发布说明
+
+中文说明
+
+本次更新引入智能排版引擎，支持论文、报告与公文格式。
+粘贴即用，无需手动调整样式。
+
+English Summary
+
+This release introduces a smart layout engine for papers and reports.
+Paste and go, no manual styling required.
+
+日本語の説明
+
+このリリースでは、論文やレポート向けのスマートレイアウト機能を追加しました。
+貼り付けるだけで自動的に整形されます。
+
+한국어 설명
+
+이번 릴리스는 논문과 보고서를 위한 스마트 레이아웃 엔진을 도입했습니다.
+붙여넣기만 하면 자동으로 서식이 정리됩니다.
+
+Описание на русском
+
+В этом выпуске представлен интеллектуальный движок вёрстки для статей и отчётов.
+Просто вставьте текст — оформление выполнится автоматически.
+
+Résumé en français
+
+Cette version introduit un moteur de mise en page intelligent pour les articles et rapports.
+Collez votre texte et la mise en forme est automatique.
+
+已知限制 / Known Issues / 既知の問題
+
+免费翻译引擎仅支持中英互译。
+日语、韩语等语言请使用 AI 翻译引擎。
