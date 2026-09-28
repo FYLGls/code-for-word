@@ -271,6 +271,23 @@ export function buildPaperModel(blocks, options = {}) {
       })
       return
     }
+    if (b.kind === 'table') {
+      paras.push({
+        kind: 'table',
+        runs: [],
+        header: b.header || [],
+        rows: b.rows || [],
+        fontName: opts.bodyFont,
+        fontSizePt: Math.min(opts.bodySizePt, 12),
+        align: 'left',
+        firstLineTwips: 0,
+        leftIndentTwips: 0,
+        beforeTwips: ptTwips(6),
+        afterTwips: ptTwips(6),
+        lineMultiple: opts.lineSpacing
+      })
+      return
+    }
     if (b.kind === 'signoff') {
       // 落款（机构/日期）：右对齐
       paras.push({
@@ -374,7 +391,16 @@ export function paperParasToPlainText(paras) {
   let prevGroup = ''
   for (const p of paras) {
     const text = p.runs.map((r) => r.text).join('')
-    if (!text.trim()) continue
+    if (!text.trim() && p.kind !== 'table') continue
+    if (p.kind === 'table') {
+      const cells = [
+        ...(p.header?.length ? [p.header.join(' | ')] : []),
+        ...(p.rows || []).map((r) => r.join(' | '))
+      ]
+      parts.push(cells.join('\n'))
+      prevGroup = ''
+      continue
+    }
     if ((p.kind === 'code' || p.kind === 'codeCaption') && p.groupId === prevGroup) {
       parts[parts.length - 1] += `\n${text}`
     } else {

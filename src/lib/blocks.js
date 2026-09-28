@@ -322,6 +322,22 @@ function decorateCheckbox(s) {
   return s.replace(/^\[( |x|X)?\]\s*/, (full, mark) => ((mark || '').trim() ? '☑ ' : '☐ '))
 }
 
+/** markdown 管道表格行 */
+function isTableRow(line) {
+  return /^\s*\|.*\|\s*$/.test(line)
+}
+
+/** | a | b | → ['a','b'] */
+function splitTableRow(line) {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim())
+}
+
+/** 表格分隔线 |---|---| */
+function isTableDivider(line) {
+  const cells = splitTableRow(line)
+  return cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c))
+}
+
 /**
  * 解析无围栏区域为块。
  * @param {string[]} lines
@@ -349,6 +365,30 @@ function parseTextRegion(lines, splitMode = 'auto') {
   let proseContext = false
   let listHint = false
   for (const g of groups) {
+    // Excel/TSV 粘贴：≥2 行含制表符且列数一致、单元格都较短 → 表格（首行作表头）
+    if (g.length >= 2) {
+      const tsvRows = g.map((l) => l.split('\t'))
+      const tsvish = g.filter((l) => l.includes('\t')).length * 2 >= g.length
+        && tsvRows.every((cells) => cells.length === tsvRows[0].length && cells.length >= 2)
+        && tsvRows.every((cells) => cells.every((c) => [...c.trim()].length <= 15))
+      if (tsvish) {
+        const header = tsvRows.shift()
+        units.push({ type: 'table', header, rows: tsvRows })
+        proseContext = false
+        listHint = false
+        continue
+      }
+    }
+    // markdown 管道表格组 → 表格单元（| a | b | 连续行，可有 |---| 分隔线）
+    if (g.length >= 2 && g.every((l) => isTableRow(l))) {
+      const dataRows = g.filter((l) => !isTableDivider(l)).map(splitTableRow)
+      const hasDivider = g.some((l) => isTableDivider(l))
+      const header = hasDivider && dataRows.length ? dataRows.shift() : []
+      units.push({ type: 'table', header, rows: dataRows })
+      proseContext = false
+      listHint = false
+      continue
+    }
     // 算法伪代码：`1: xxx` 步骤行组 / `输入:` `输出:` 组 → 代码单元
     const stepCount = g.filter((l) => RE.algoStep.test(l)).length
     const allIO = g.length >= 1
@@ -415,6 +455,11 @@ function parseTextRegion(lines, splitMode = 'auto') {
       else if (p.type === 'bare' && isCompleteSentenceLine(p.text)) { /* 延续 */ }
       else if (p.type === 'marked' && (LIST_MARKERS.has(p.marker) || p.listish)) { /* 延续 */ }
       else colonLead = false
+    }
+
+    if (u.type === 'table') {
+      blocks.push({ kind: 'table', text: '', header: u.header || [], rows: u.rows || [] })
+      continue
     }
 
     if (u.type === 'code') {

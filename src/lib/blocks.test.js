@@ -410,6 +410,9 @@ describe('parseBlocks', () => {
       '',
       '表 2-1 组件配置',
       '',
+      '| 组件 | 模型 |',
+      '| --- | --- |',
+      '| 编码器 | BGE |',
       '',
       '$$Attention(Q, K, V) = softmax(QK^T)V$$',
       '',
@@ -432,12 +435,44 @@ describe('parseBlocks', () => {
       'heading', 'heading', 'item', 'item',
       'heading', 'paragraph', 'code',
       'caption', 'code',
-      'caption', 'formula',
+      'caption', 'table', 'formula',
       'item', 'item', 'caption',
       'heading', 'ref', 'signoff', 'signoff'
     ])
     expect(detectKindOf(src)).toBe('mixed')
   })
+
+  it('parses web-copied markdown with pipe tables and html entities', () => {
+    const src = [
+      '# Transformer 模型对比',
+      '',
+      '实验环境为&nbsp;RTX 4090&amp;128G&nbsp;内存。',
+      '',
+      '| 模型 | 参数量 | 层数 |',
+      '| --- | --- | --- |',
+      '| BERT-base | 110M | 12 |',
+      '| BERT-large | 340M | 24 |',
+      '',
+      '详见[论文原文](https://example.com/paper)。'
+    ].join('\n')
+    const blocks = parseBlocks(src)
+    expect(blocks[0]).toMatchObject({ kind: 'heading', level: 1, text: 'Transformer 模型对比' })
+    expect(blocks[1].text).toContain('RTX 4090&128G 内存')
+    const table = blocks.find((b) => b.kind === 'table')
+    expect(table.header).toEqual(['模型', '参数量', '层数'])
+    expect(table.rows).toEqual([['BERT-base', '110M', '12'], ['BERT-large', '340M', '24']])
+    expect(blocks[blocks.length - 1].text).toContain('论文原文')
+    expect(detectKindOf(src)).toBe('text')
+  })
+
+
+  it('parses excel TSV pastes as tables', () => {
+    const src = ['姓名\t年龄\t部门', '张三\t28\t技术部', '李四\t32\t市场部'].join('\n')
+    const table = parseBlocks(src).find((b) => b.kind === 'table')
+    expect(table.header).toEqual(['姓名', '年龄', '部门'])
+    expect(table.rows).toEqual([['张三', '28', '技术部'], ['李四', '32', '市场部']])
+  })
+
 
   it('preserves original numbering in none scheme for legal docs', () => {
     const src = ['第一条 合同标的', '', '甲方应交付。', '', '1.1 交付地点', '', '乙方所在地。'].join('\n')
