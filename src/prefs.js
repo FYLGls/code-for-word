@@ -22,6 +22,28 @@ const KEY = 'codepaste-prefs'
  * @property {boolean} [captionBold]
  * @property {boolean} [captionItalic]
  * @property {string[]} [captionLines]
+ * @property {string} [mode] auto | code | text
+ * @property {string} [textScheme] academic | thesis | official | none
+ * @property {string} [textSplit] auto | items | merge
+ * @property {string} [textBodyFont]
+ * @property {string} [textLatinFont]
+ * @property {string} [textBodySize]
+ * @property {string} [textHeadingFont]
+ * @property {string} [textLineSpacing]
+ * @property {string} [textIndentChars] '2' | '4' | '0'
+ * @property {string} [textAlign] justify | left
+ * @property {string} [textBodyAfter] '0' | '6' | '12'（磅）
+ * @property {boolean} [textBold]
+ * @property {boolean} [textItalic]
+ * @property {boolean} [textUnderline]
+ * @property {boolean} [textIndent] 旧版布尔首行缩进（兼容读取）
+ * @property {string} [translateProvider] none | free | ai
+ * @property {string} [translateDirection] auto | en2zh | zh2en
+ * @property {string} [translateOutput] original | translated | bilingual
+ * @property {boolean} [autoTranslate]
+ * @property {string} [aiBaseUrl]
+ * @property {string} [aiModel]
+ * @property {string} [aiApiKey]
  */
 
 /** @returns {Prefs} */

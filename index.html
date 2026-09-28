@@ -37,7 +37,15 @@
     </header>
 
     <section class="toolbar enter">
-      <div class="toolbar-row">
+      <div class="toolbar-row mode-row">
+        <div class="mode-switch" id="modeSwitch" role="group" aria-label="mode">
+          <button type="button" class="mode-btn is-active" data-mode="auto" data-i18n="modeAuto">自动</button>
+          <button type="button" class="mode-btn" data-mode="code" data-i18n="modeCode">代码</button>
+          <button type="button" class="mode-btn" data-mode="text" data-i18n="modeText">文本</button>
+        </div>
+        <span class="detect-chip" id="detectChip" hidden></span>
+      </div>
+      <div class="toolbar-row" id="codeToolbar">
         <label class="field"><span data-i18n="langCode">语言</span>
           <select id="language" aria-label="language"></select>
         </label>
@@ -90,6 +98,81 @@
         <label class="check"><input type="checkbox" id="forceItalic"> <span data-i18n="italic">倾斜</span></label>
         <label class="check"><input type="checkbox" id="captionEnabled"> <span data-i18n="caption">说明</span></label>
       </div>
+      <div class="toolbar-row text-toolbar" id="textToolbar" hidden>
+        <label class="field"><span data-i18n="numbering">编号方案</span>
+          <select id="textScheme" aria-label="numbering scheme"></select>
+        </label>
+        <label class="field"><span data-i18n="paragraphSplitting">分段方式</span>
+          <select id="textSplit" aria-label="paragraph splitting"></select>
+        </label>
+        <label class="field"><span data-i18n="textBodyFont">正文字体</span>
+          <select id="textBodyFont" aria-label="body font"></select>
+        </label>
+        <label class="field"><span data-i18n="latinFontLabel">西文字体</span>
+          <select id="textLatinFont" aria-label="latin font"></select>
+        </label>
+        <label class="field"><span data-i18n="textBodySize">正文字号</span>
+          <select id="textBodySize" aria-label="body size"></select>
+        </label>
+        <label class="field"><span data-i18n="headingFontLabel">标题字体</span>
+          <select id="textHeadingFont" aria-label="heading font"></select>
+        </label>
+        <label class="field"><span data-i18n="textLineSpacing">行距</span>
+          <select id="textLineSpacing" aria-label="line spacing"></select>
+        </label>
+        <label class="field"><span data-i18n="indentLabel">首行缩进</span>
+          <select id="textIndentChars" aria-label="first line indent"></select>
+        </label>
+        <label class="field"><span data-i18n="alignLabel">对齐</span>
+          <select id="textAlign" aria-label="alignment"></select>
+        </label>
+        <label class="field"><span data-i18n="bodyAfterLabel">段后距</span>
+          <select id="textBodyAfter" aria-label="space after paragraph"></select>
+        </label>
+        <label class="check"><input type="checkbox" id="textBold"> <span data-i18n="bold">加粗</span></label>
+        <label class="check"><input type="checkbox" id="textItalic"> <span data-i18n="italic">倾斜</span></label>
+        <label class="check"><input type="checkbox" id="textUnderline"> <span data-i18n="underline">下划线</span></label>
+      </div>
+      <div class="controls-row translate-row" id="translateRow" hidden>
+        <div class="translate-toolbar">
+          <label class="field">
+            <span data-i18n="translateProviderLabel">翻译</span>
+            <select id="translateProvider" aria-label="translation provider"></select>
+          </label>
+          <label class="field">
+            <span data-i18n="directionLabel">方向</span>
+            <select id="translateDirection" aria-label="translation direction"></select>
+          </label>
+          <label class="field">
+            <span data-i18n="translateOutputLabel">输出</span>
+            <select id="translateOutput" aria-label="translation output"></select>
+          </label>
+          <label class="check"><input type="checkbox" id="autoTranslate" checked> <span data-i18n="autoTranslateLabel">自动翻译</span></label>
+          <div class="caption-row-btns translate-btns">
+            <button type="button" class="btn ghost" id="btnAiSettings" data-i18n="aiSettings">AI 设置</button>
+            <button type="button" class="btn primary" id="btnTranslate" data-i18n="btnTranslate" disabled>翻译</button>
+          </div>
+        </div>
+      </div>
+      <div class="controls-row ai-row" id="aiPanel" hidden>
+        <label class="field">
+          <span data-i18n="aiPreset">服务商</span>
+          <select id="aiPreset" aria-label="AI provider preset"></select>
+        </label>
+        <label class="field">
+          <span data-i18n="aiBaseUrl">接口地址</span>
+          <input type="text" id="aiBaseUrl" placeholder="https://open.bigmodel.cn/api/paas/v4" autocomplete="off">
+        </label>
+        <label class="field">
+          <span data-i18n="aiModel">模型</span>
+          <input type="text" id="aiModel" placeholder="glm-4-flash" autocomplete="off">
+        </label>
+        <label class="field">
+          <span data-i18n="aiApiKey">API Key</span>
+          <input type="password" id="aiApiKey" placeholder="sk-…" autocomplete="off">
+        </label>
+        <button type="button" class="btn ghost" id="btnAiSave" data-i18n="aiSave">保存</button>
+      </div>
       <div class="controls-row caption-row" id="captionRow" hidden>
         <div class="caption-toolbar">
           <label class="field">
@@ -118,7 +201,7 @@
     <main class="workspace enter">
       <section class="panel">
         <div class="panel-head">
-          <strong data-i18n="source">源代码</strong>
+          <strong id="sourceLabel" data-i18n="source">源代码</strong>
           <span id="metaSource" class="meta">源代码</span>
         </div>
         <textarea id="source" spellcheck="false" data-i18n-placeholder="placeholder" placeholder="在此粘贴代码…"></textarea>

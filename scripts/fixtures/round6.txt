@@ -1,0 +1,24 @@
+# Transformer 模型对比
+
+以下是我们对主流模型的对比评测，实验环境为&nbsp;RTX 4090&amp;128G&nbsp;内存。
+
+## 模型参数对比
+
+| 模型 | 参数量 | 层数 | 隐藏维度 |
+| BERT-base | 110M | 12 | 768 |
+| BERT-large | 340M | 24 | 1024 |
+| RoBERTa-base | 125M | 12 | 768 |
+
+## 实验结论
+
+**RoBERTa** 在多数任务上优于 BERT，详见[论文原文](https://example.com/paper)。
+
+&lt;注意&gt; 上述结果均为英文数据集上的表现。
+
+各模型推理速度如下：
+
+| 模型 | 延迟(ms) |
+| BERT-base | 12.3 |
+| BERT-large | 31.7 |
+
+综上所述，轻量场景推荐 **BERT-base**，精度优先推荐 RoBERTa-large。
