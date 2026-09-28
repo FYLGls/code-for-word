@@ -468,6 +468,59 @@ describe('parseBlocks', () => {
     expect(table.rows).toEqual([['张三', '28', '技术部'], ['李四', '32', '市场部']])
   })
 
+  it('handles OCR full-width text with inter-character spaces', () => {
+    const src = [
+      '基 于 深 度 学 习 的 文 本 分 类 研 究',
+      '',
+      '１ 引言',
+      '',
+      '随 着 互 联 网 技 术 的 发 展 ， 文 本 数 据 增 长 。',
+      '',
+      '１．１ 研 究 背 景',
+      '',
+      '准 确 率 达 到 ９５ ． ２ ％ ， 效 果 显 著 。',
+      '',
+      '参 考 文 献',
+      '',
+      '〔 １ 〕 张 三 ． 文 本 分 类 〔 Ｊ 〕 ． 学 报 ， ２ ０ ２ ３ ．'
+    ].join('\n')
+    const blocks = renumberBlocks(parseBlocks(src), 'academic')
+    const shape = blocks.map((b) => `${b.kind}${b.number ? ':' + b.number : ''}`)
+    expect(shape).toEqual(['title', 'heading:1', 'paragraph', 'heading:1.1', 'paragraph', 'heading', 'ref'])
+    expect(blocks[0].text).toBe('基于深度学习的文本分类研究')
+    expect(blocks[2].text).toContain('随着互联网技术的发展')
+    expect(blocks[4].text).toContain('95.2%')
+    expect(blocks[6].text).toContain('[1] 张三')
+    // 正常排版空格不被清理
+    const normal = renumberBlocks(parseBlocks('第1章 绪论\n\n正文内容。'), 'thesis')
+    expect(normal[0].text).toBe('绪论')
+  })
+
+  it('converts task checkboxes and recognizes emoji bullets', () => {
+    const src = [
+      '待办清单',
+      '',
+      '- [x] 完成联调',
+      '- [ ] 补充文档',
+      '',
+      '建议：',
+      '',
+      '✅ 推荐方案 A',
+      '❌ 不推荐方案 B'
+    ].join('\n')
+    const items = renumberBlocks(parseBlocks(src), 'academic').filter((b) => b.kind === 'item')
+    expect(items.map((b) => b.text)).toEqual([
+      '☑ 完成联调', '☐ 补充文档', '推荐方案 A', '不推荐方案 B'
+    ])
+  })
+
+  it('does not mistake table-referencing sentences for captions', () => {
+    const src = ['Table 1 shows results on eight GLUE tasks.', '', 'Table 1 Model size versus latency on CPU'].join('\n')
+    const blocks = parseBlocks(src)
+    expect(blocks[0].kind).toBe('paragraph')
+    expect(blocks[1].kind).toBe('caption')
+  })
+
   it('normalizes a messy PDF-copied paper end to end', () => {
     const src = [
       '摘要',

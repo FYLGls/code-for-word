@@ -1,0 +1,25 @@
+聊聊前端状态管理的演进 🚀
+
+这几年前端状态管理方案经历了三代演进：从 Flux 到 Redux，再到如今的原子化状态。
+
+React 生态里，`useState` 适合局部状态，跨组件共享就得考虑 Context 或 Zustand 了 😂。
+
+性能对比（2026 年实测）：
+
+| 方案 | 包体积 | 重渲染次数 |
+| --- | --- | --- |
+| Redux Toolkit | 12.4kb | 3.2 |
+| Zustand | 1.1kb | 1.0 |
+| Jotai | 3.5kb | 1.4 |
+
+我的建议很直接：
+
+✅ 小项目直接 useState + Context
+✅ 中大型用 Zustand，API 简单心智负担小
+❌ 新项目别再上裸 Redux 了
+
+服务端状态（server state）和客户端状态要分开管理，用 TanStack Query 处理前者 👍。
+
+延伸阅读：https://react.dev/reference/react/useState
+
+下期聊聊 React Compiler 对状态管理的影响，敬请期待 😉

@@ -6,6 +6,6 @@ export default defineConfig({
   base: process.env.GITHUB_PAGES === '1' ? '/code-for-word/' : './',
   test: {
     environment: 'node',
-    include: ['src/**/*.test.js']
+    include: ['src/**/*.test.js', 'server/**/*.test.js']
   }
 })

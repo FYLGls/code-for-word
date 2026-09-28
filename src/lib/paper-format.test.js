@@ -20,6 +20,19 @@ describe('parseInline', () => {
     ])
   })
 
+  it('converts latex inline commands', () => {
+    expect(parseInline('suffers from \\textbf{catastrophic forgetting} of knowledge')).toEqual([
+      { text: 'suffers from ' },
+      { text: 'catastrophic forgetting', bold: true },
+      { text: ' of knowledge' }
+    ])
+    expect(parseInline('gain over baselines \\cite{devlin2019} in GLUE')).toEqual([
+      { text: 'gain over baselines ' },
+      { text: ' in GLUE' }
+    ])
+    expect(parseInline('loss is $L = -\\log p$ here')[1]).toEqual({ text: 'L = -\\log p', italic: true })
+  })
+
   it('parses underline, italic and strikethrough markers', () => {
     expect(parseInline('重点__下划线__内容')).toEqual([
       { text: '重点' },

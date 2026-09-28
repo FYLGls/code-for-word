@@ -85,13 +85,14 @@ function ptTwips(pt) {
 
 /**
  * 行内标记 → Word 格式：**加粗**、*倾斜*、__下划线__、~~删除线~~、
- * `代码`（等宽）、[文字](链接) → 文字。
+ * `代码`（等宽）、[文字](链接) → 文字；
+ * LaTeX 残留：\textbf{}→加粗、\textit{}/\emph{}→倾斜、\cite{}→剥离、$x$→倾斜。
  * @param {string} text
  * @returns {PaperRun[]}
  */
 export function parseInline(text) {
   const out = []
-  const re = /(\*\*([^*]+)\*\*)|(__([^_]+)__)|(~~([^~]+)~~)|(`([^`]+)`)|(\*([^*\s][^*]*?)\*)|(\[([^\]]+)\]\([^)]*\))/g
+  const re = /(\*\*([^*]+)\*\*)|(__([^_]+)__)|(~~([^~]+)~~)|(`([^`]+)`)|(\*([^*\s][^*]*?)\*)|(\\(?:textbf|textit|emph|underline)\{([^}]+)\})|(\\cite\{[^}]*\})|(\$([^$\n]+)\$)|(\[([^\]]+)\]\([^)]*\))/g
   let last = 0
   let m
   while ((m = re.exec(text))) {
@@ -101,11 +102,21 @@ export function parseInline(text) {
     else if (m[6] != null) out.push({ text: m[6], strike: true })
     else if (m[8] != null) out.push({ text: m[8], fontName: 'Consolas' })
     else if (m[10] != null) out.push({ text: m[10], italic: true })
-    else if (m[12] != null) out.push({ text: m[12] })
+    else if (m[12] != null) {
+      // \textbf{x} → bold；\textit/\emph/\underline → italic/underline
+      const cmd = m[11]
+      if (/textbf/.test(cmd)) out.push({ text: m[12], bold: true })
+      else if (/underline/.test(cmd)) out.push({ text: m[12], underline: true })
+      else out.push({ text: m[12], italic: true })
+    } else if (m[13] != null) {
+      // \cite{key} 剥离
+    } else if (m[15] != null) {
+      out.push({ text: m[15], italic: true }) // $x^2$ 行内公式 → 倾斜保留
+    } else if (m[17] != null) out.push({ text: m[17] })
     last = re.lastIndex
   }
   if (last < text.length) out.push({ text: text.slice(last) })
-  return out.length ? out : [{ text }]
+  return out.length ? out.filter((r) => r.text) : [{ text }]
 }
 
 /**

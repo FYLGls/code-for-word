@@ -67,7 +67,7 @@ const RE = {
   numParen: /^(\d{1,3})[)）]\s*[、.．]?\s*(.+)$/,
   latinParen: /^[（(]([a-zA-Z])[)）]\s*[、.．]?\s*(.+)$/,
   latinDot: /^([a-zA-Z])[.、．]\s+([^\s].*)$/,
-  bullet: /^\s*[-•·▪◦*+>–—‣⁃]\s+(.+)$/,
+  bullet: /^\s*[-•·▪◦*+>–—‣⁃✅❌✔✖☑☐➤→]\s+(.+)$/,
   ref: /^\[\d{1,3}\]\s*[、.．]?\s*(.+)$/,
   refLike: /^\s*\[\d{1,3}\]\s/,
   caption: /^(图|表|Figure|Fig\.?|Table)\s*(\d{1,3}(?:[-–]\d{1,3})?)\s*[：:.．]?\s*(.*)$/i,
@@ -98,9 +98,10 @@ export function parseMarker(line) {
   const ref = s.match(RE.ref)
   if (ref && ref[1].trim()) return { level: -1, text: s, marker: 'ref' }
 
-  // 图表题注：图 1 xxx / 表 2 xxx / Figure 1 / Table 1（保留原文）
+  // 图表题注：图 1 xxx / 表 2 xxx / Figure 1 / Table 1（保留原文）。
+  // 以句号收尾的是正文引用句（"Table 1 shows results…"），不是题注
   const cap = s.match(RE.caption)
-  if (cap && cap[3].trim() && !/[。．！？]$/.test(cap[3].trim())) {
+  if (cap && cap[3].trim() && !/[。．！？]$|\.$/.test(cap[3].trim())) {
     return { level: -2, text: s, marker: 'caption' }
   }
 
@@ -314,6 +315,44 @@ function decodeEntities(s) {
     .replace(/&mdash;/g, '—')
     .replace(/&hellip;/g, '…')
     .replace(/<br\s*\/?>/gi, '\n')
+}
+
+/** OCR 残留清理：全角数字/字母/句点/〔〕/％→半角（１．１→1.1、ＢＥＲＴ→BERT） */
+function normalizeFullWidth(s) {
+  return s
+    .replace(/[０-９Ａ-Ｚａ-ｚ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/．/g, '.')
+    .replace(/％/g, '%')
+    .replace(/〔/g, '[')
+    .replace(/〕/g, ']')
+}
+
+/** OCR 字间空格清理：只对"OCR 行"生效——该行 CJK 字间空格密度 ≥ 0.25
+ * （如"基 于 深 度 学 习"）才整行清理；正常"第X章 标题"的排版空格保留。
+ * 换行不动，英文词间空格保留。另清理 "95 . 2"（数字句点间）与 "[ 1 ]"（括号内侧）。 */
+function squeezeCjkSpaces(s) {
+  const isOcrLine = (line) => {
+    const cjkCount = (line.match(/[\u3400-\u9fff\u3040-\u30ff]/g) || []).length
+    if (cjkCount < 4) return false
+    // 仅统计空格（含全角空格）；制表符是 TSV/缩进的结构字符，不算 OCR 字距
+    const gaps = (line.match(/[\u3400-\u9fff\u3040-\u30ff][ \u3000]+(?=[\u3400-\u9fff\u3040-\u30ff])/g) || []).length
+    return gaps / cjkCount >= 0.25
+  }
+  const squeezeLine = (line) => line
+    .replace(/([\u3400-\u9fff\u3040-\u30ff，。；：、])[ \u3000]+(?=[\u3400-\u9fff\u3040-\u30ff，。；：、])/g, '$1')
+  return s
+    .split('\n')
+    .map((line) => (isOcrLine(line) ? squeezeLine(line) : line))
+    .join('\n')
+    .replace(/(\d)[ \t]+(?=[.\d%])/g, '$1')
+    .replace(/\.[ \t]+(?=\d)/g, '.')
+    .replace(/\[[ \t]+(?=[\w\]])/g, '[')
+    .replace(/[ \t]+(?=\])/g, '')
+}
+
+/** 任务清单勾选标记 [x]/[ ]/[] → ☑/☐（保留状态便于 Word 中查看） */
+function decorateCheckbox(s) {
+  return s.replace(/^\[( |x|X)?\]\s*/, (full, mark) => ((mark || '').trim() ? '☑ ' : '☐ '))
 }
 
 /** markdown 管道表格行 */
@@ -601,7 +640,7 @@ export function parseBlocks(text, options = {}) {
   const splitMode = ['items', 'merge', 'lines'].includes(options.splitMode)
     ? options.splitMode
     : 'auto'
-  const normalized = decodeEntities(String(text ?? ''))
+  const normalized = squeezeCjkSpaces(normalizeFullWidth(decodeEntities(String(text ?? ''))))
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
     .replace(/\s+$/, '')
@@ -641,6 +680,14 @@ export function parseBlocks(text, options = {}) {
     if (cur.kind === 'code' && !cur.fenced && prev.kind === 'code' && !prev.fenced) {
       prev.code = `${prev.code}\n${cur.code}`
       blocks.splice(k, 1)
+    }
+  }
+
+  // 任务清单勾选标记 → ☑/☐（会议纪要/待办列表常见形态）
+  for (const b of blocks) {
+    if (b.kind === 'item') {
+      b.text = decorateCheckbox(b.text)
+      if (b.raw) b.raw = decorateCheckbox(b.raw)
     }
   }
 
