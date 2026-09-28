@@ -133,6 +133,46 @@
         <label class="check"><input type="checkbox" id="textItalic"> <span data-i18n="italic">倾斜</span></label>
         <label class="check"><input type="checkbox" id="textUnderline"> <span data-i18n="underline">下划线</span></label>
       </div>
+      <div class="controls-row translate-row" id="translateRow" hidden>
+        <div class="translate-toolbar">
+          <label class="field">
+            <span data-i18n="translateProviderLabel">翻译</span>
+            <select id="translateProvider" aria-label="translation provider"></select>
+          </label>
+          <label class="field">
+            <span data-i18n="directionLabel">方向</span>
+            <select id="translateDirection" aria-label="translation direction"></select>
+          </label>
+          <label class="field">
+            <span data-i18n="translateOutputLabel">输出</span>
+            <select id="translateOutput" aria-label="translation output"></select>
+          </label>
+          <label class="check"><input type="checkbox" id="autoTranslate"> <span data-i18n="autoTranslateLabel">自动翻译</span></label>
+          <div class="caption-row-btns translate-btns">
+            <button type="button" class="btn ghost" id="btnAiSettings" data-i18n="aiSettings">AI 设置</button>
+            <button type="button" class="btn primary" id="btnTranslate" data-i18n="btnTranslate" disabled>翻译</button>
+          </div>
+        </div>
+      </div>
+      <div class="controls-row ai-row" id="aiPanel" hidden>
+        <label class="field">
+          <span data-i18n="aiPreset">服务商</span>
+          <select id="aiPreset" aria-label="AI provider preset"></select>
+        </label>
+        <label class="field">
+          <span data-i18n="aiBaseUrl">接口地址</span>
+          <input type="text" id="aiBaseUrl" placeholder="https://open.bigmodel.cn/api/paas/v4" autocomplete="off">
+        </label>
+        <label class="field">
+          <span data-i18n="aiModel">模型</span>
+          <input type="text" id="aiModel" placeholder="glm-4-flash" autocomplete="off">
+        </label>
+        <label class="field">
+          <span data-i18n="aiApiKey">API Key</span>
+          <input type="password" id="aiApiKey" placeholder="sk-…" autocomplete="off">
+        </label>
+        <button type="button" class="btn ghost" id="btnAiSave" data-i18n="aiSave">保存</button>
+      </div>
       <div class="controls-row caption-row" id="captionRow" hidden>
         <div class="caption-toolbar">
           <label class="field">

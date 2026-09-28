@@ -56,6 +56,7 @@ import { detectMode } from './lib/detect.js'
 import { parseBlocks, renumberBlocks, resolveSchemeId } from './lib/blocks.js'
 import { buildPaperModel, paperParasToPlainText } from './lib/paper-format.js'
 import { paperToRtf, paperToWordHtml, paperToDocxBlob } from './lib/paper-export.js'
+import { translateTexts } from './lib/translate.js'
 import { loadPrefs, savePrefs } from './prefs.js'
 import { githubHome, openExternal } from './promo.js'
 
@@ -188,6 +189,30 @@ const LINE_SPACING_OPTIONS = [
   { id: '2', labelKey: 'spacing2' }
 ]
 
+const TRANSLATE_PROVIDERS = [
+  { id: 'none', labelKey: 'translateNone' },
+  { id: 'free', labelKey: 'translateFree' },
+  { id: 'ai', labelKey: 'translateAI' }
+]
+
+const TRANSLATE_DIRECTIONS = [
+  { id: 'auto', labelKey: 'dirAuto' },
+  { id: 'en2zh', labelKey: 'dirEn2Zh' },
+  { id: 'zh2en', labelKey: 'dirZh2En' }
+]
+
+const TRANSLATE_OUTPUTS = [
+  { id: 'original', labelKey: 'translateOriginal' },
+  { id: 'translated', labelKey: 'translateTranslated' },
+  { id: 'bilingual', labelKey: 'translateBilingual' }
+]
+
+const AI_PRESETS = [
+  { id: 'zhipu', labelKey: 'aiPresetZhipu', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
+  { id: 'deepseek', labelKey: 'aiPresetDeepseek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' },
+  { id: 'custom', labelKey: 'aiPresetCustom', baseUrl: '', model: '' }
+]
+
 const els = {
   language: document.getElementById('language'),
   fontFamily: document.getElementById('fontFamily'),
@@ -232,6 +257,8 @@ const els = {
   detectChip: document.getElementById('detectChip'),
   codeToolbar: document.getElementById('codeToolbar'),
   textToolbar: document.getElementById('textToolbar'),
+  translateRow: document.getElementById('translateRow'),
+  aiPanel: document.getElementById('aiPanel'),
   textScheme: document.getElementById('textScheme'),
   textSplit: document.getElementById('textSplit'),
   textBodyFont: document.getElementById('textBodyFont'),
@@ -245,6 +272,17 @@ const els = {
   textBold: document.getElementById('textBold'),
   textItalic: document.getElementById('textItalic'),
   textUnderline: document.getElementById('textUnderline'),
+  translateProvider: document.getElementById('translateProvider'),
+  translateDirection: document.getElementById('translateDirection'),
+  translateOutput: document.getElementById('translateOutput'),
+  autoTranslate: document.getElementById('autoTranslate'),
+  btnTranslate: document.getElementById('btnTranslate'),
+  btnAiSettings: document.getElementById('btnAiSettings'),
+  aiPreset: document.getElementById('aiPreset'),
+  aiBaseUrl: document.getElementById('aiBaseUrl'),
+  aiModel: document.getElementById('aiModel'),
+  aiApiKey: document.getElementById('aiApiKey'),
+  btnAiSave: document.getElementById('btnAiSave'),
   sourceLabel: document.getElementById('sourceLabel')
 }
 
@@ -267,8 +305,14 @@ let selectsReady = false
 let mode = 'code'
 /** @type {'code' | 'text' | 'mixed'} */
 let textDetect = 'text'
+/** @type {Map<number, string> | null} 按原始块索引存放译文 */
+let translations = null
+/** @type {{ source: string, provider: string, direction: string, splitMode: string } | null} 译文有效性标记 */
+let translationsMeta = null
+let translating = false
 /** @type {{ paras: import('./lib/paper-format.js').PaperPara[], plainText: string } | null} */
 let latestPaper = null
+let autoTranslateTimer = 0
 
 function setStatus(text, kind = '') {
   els.status.textContent = text
@@ -329,7 +373,14 @@ function collectPrefs() {
     textBodyAfter: els.textBodyAfter?.value || '0',
     textBold: !!els.textBold?.checked,
     textItalic: !!els.textItalic?.checked,
-    textUnderline: !!els.textUnderline?.checked
+    textUnderline: !!els.textUnderline?.checked,
+    translateProvider: els.translateProvider?.value || 'none',
+    translateDirection: els.translateDirection?.value || 'auto',
+    translateOutput: els.translateOutput?.value || 'original',
+    autoTranslate: !!els.autoTranslate?.checked,
+    aiBaseUrl: els.aiBaseUrl?.value || '',
+    aiModel: els.aiModel?.value || '',
+    aiApiKey: els.aiApiKey?.value || ''
   }
 }
 
@@ -368,11 +419,18 @@ function applyPrefs(p) {
   if (els.textBold) els.textBold.checked = !!p.textBold
   if (els.textItalic) els.textItalic.checked = !!p.textItalic
   if (els.textUnderline) els.textUnderline.checked = !!p.textUnderline
+  setVal(els.translateProvider, p.translateProvider)
+  setVal(els.translateDirection, p.translateDirection)
+  setVal(els.translateOutput, p.translateOutput)
+  setVal(els.aiPreset, p.aiPreset)
+  setVal(els.aiBaseUrl, p.aiBaseUrl)
+  setVal(els.aiModel, p.aiModel)
+  setVal(els.aiApiKey, p.aiApiKey)
   // 兼容旧版布尔 textIndent
   if (p.textIndentChars == null && p.textIndent === false && els.textIndentChars) {
     els.textIndentChars.value = '0'
   }
-  // 文本模式默认关闭：只接受用户明确保存过的选择，非法值回落代码模式
+  if (els.autoTranslate) els.autoTranslate.checked = p.autoTranslate === true
   if (p.mode) mode = p.mode === 'code' || p.mode === 'text' || p.mode === 'auto' ? p.mode : 'code'
   if (els.forceBold) els.forceBold.checked = !!p.forceBold
   if (els.forceItalic) els.forceItalic.checked = !!p.forceItalic
@@ -452,7 +510,7 @@ function refillLabeledSelects() {
   syncCaptionLineLabels()
 }
 
-/** 文本模式选项下拉（编号/分段/字体字号/行距/缩进/对齐/段距） */
+/** 文本模式选项下拉（编号/分段/字体字号/行距/缩进/对齐/段距/翻译） */
 function refillTextSelects() {
   fillKeyedSelect(els.textScheme, SCHEME_OPTIONS, els.textScheme?.value || 'academic', 'academic')
   fillKeyedSelect(els.textSplit, SPLIT_OPTIONS, els.textSplit?.value || 'auto', 'auto')
@@ -460,6 +518,10 @@ function refillTextSelects() {
   fillKeyedSelect(els.textIndentChars, INDENT_OPTIONS, els.textIndentChars?.value || '2', '2')
   fillKeyedSelect(els.textAlign, ALIGN_OPTIONS, els.textAlign?.value || 'justify', 'justify')
   fillKeyedSelect(els.textBodyAfter, BODY_AFTER_OPTIONS, els.textBodyAfter?.value || '0', '0')
+  fillKeyedSelect(els.translateProvider, TRANSLATE_PROVIDERS, els.translateProvider?.value || 'none', 'none')
+  fillKeyedSelect(els.translateDirection, TRANSLATE_DIRECTIONS, els.translateDirection?.value || 'auto', 'auto')
+  fillKeyedSelect(els.translateOutput, TRANSLATE_OUTPUTS, els.translateOutput?.value || 'original', 'original')
+  fillKeyedSelect(els.aiPreset, AI_PRESETS, els.aiPreset?.value || 'zhipu', 'zhipu')
 
   for (const [el, keep, fallback] of [
     [els.textBodyFont, els.textBodyFont?.value || '宋体', '宋体'],
@@ -736,6 +798,10 @@ function effectiveMode() {
 
 function setMode(next, options = {}) {
   const target = next === 'code' || next === 'text' ? next : 'auto'
+  if (target !== mode) {
+    translations = null
+    translationsMeta = null
+  }
   mode = target
   els.modeSwitch?.querySelectorAll('.mode-btn').forEach((btn) => {
     const on = btn.getAttribute('data-mode') === mode
@@ -754,16 +820,20 @@ function syncModeUI() {
   const eff = effectiveMode()
   if (eff === syncedEff) {
     syncDetectChip()
+    syncTranslateButton()
     return
   }
   syncedEff = eff
   if (els.codeToolbar) els.codeToolbar.hidden = eff !== 'code'
   if (els.textToolbar) els.textToolbar.hidden = eff !== 'text'
+  if (els.translateRow) els.translateRow.hidden = eff !== 'text'
+  if (eff !== 'text' && els.aiPanel) els.aiPanel.hidden = true
   if (eff !== 'code' && els.captionRow) els.captionRow.hidden = true
   else if (eff === 'code') syncCaptionRow()
   if (els.sourceLabel) els.sourceLabel.textContent = t(eff === 'text' ? 'sourceText' : 'source')
   if (els.source) els.source.placeholder = t(eff === 'text' ? 'placeholderText' : 'placeholder')
   syncDetectChip()
+  syncTranslateButton()
 }
 
 function syncDetectChip() {
@@ -772,10 +842,36 @@ function syncDetectChip() {
     els.detectChip.hidden = true
     return
   }
-  const key = textDetect === 'code' ? 'detectCode' : 'detectText'
+  const key = textDetect === 'code' ? 'detectCode' : textDetect === 'mixed' ? 'detectMixed' : 'detectText'
   els.detectChip.hidden = false
   els.detectChip.textContent = t(key)
   els.detectChip.dataset.kind = textDetect
+}
+
+function syncTranslateButton() {
+  if (!els.btnTranslate) return
+  const provider = els.translateProvider?.value || 'none'
+  const enabled = effectiveMode() === 'text'
+    && provider !== 'none'
+    && !!els.source.value.trim()
+    && !translating
+  els.btnTranslate.disabled = !enabled
+  if (els.translateOutput) els.translateOutput.disabled = provider === 'none'
+}
+
+/** 当前是否可用译文（引擎、方向与原文匹配才有效） */
+function activeTranslations() {
+  const provider = els.translateProvider?.value || 'none'
+  const direction = els.translateDirection?.value || 'auto'
+  const output = els.translateOutput?.value || 'original'
+  if (provider === 'none' || output === 'original') return null
+  if (!translations || !translationsMeta) return null
+  if (translationsMeta.source !== els.source.value) return null
+  if (translationsMeta.provider !== provider) return null
+  if (translationsMeta.direction !== direction) return null
+  const splitMode = ['items', 'merge', 'lines'].includes(els.textSplit?.value) ? els.textSplit.value : 'auto'
+  if (translationsMeta.splitMode !== splitMode) return null // 分段方式变了：块索引已变，旧译文全部失效
+  return translations
 }
 
 /** 文本模式排版选项（buildPaperModel 用） */
@@ -793,6 +889,8 @@ function paperFormatOptions() {
     bodyBold: !!els.textBold?.checked,
     bodyItalic: !!els.textItalic?.checked,
     bodyUnderline: !!els.textUnderline?.checked,
+    translateOutput: els.translateOutput?.value || 'original',
+    translations: activeTranslations(),
     codeCaptionLabel: getLocale() === 'zh' ? '代码' : 'Code',
     highlight: (code, language) => codeToStyledLines(code, language || 'auto', THEME_ID, hljs).lines,
     code: {
@@ -837,8 +935,8 @@ function buildPaperFromSource() {
 function renderPreview() {
   const code = els.source.value
   if (code.trim()) {
-    // 自动识别硬护栏：只要存在任何代码票（或 hljs 高置信识别出语言）就按代码处理，
-    // 保证贴代码永远不会被自动改成正文；误判方向只会把散文留在代码模式。
+    // 自动识别硬护栏：存在任何代码票/围栏/hljs 高置信语言即按代码处理，
+    // 贴代码永远不会被自动改成正文；只有零代码票的纯散文才进入文本管线
     textDetect = detectMode(code, {
       autoDetect: (src) => {
         try {
@@ -900,6 +998,7 @@ function renderPreview() {
     preview: true
   })}</div>`
   syncModeUI()
+  scheduleAutoTranslate()
 }
 
 function scheduleRender() {
@@ -955,6 +1054,162 @@ function stampName() {
   return new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
 }
 
+/** 桌面端经主进程 IPC 代理（绕过 CORS）；网页端直连（仅支持允许跨域的接口） */
+function makeTranslateFetch() {
+  const desktop = typeof window !== 'undefined' ? window.codepasteDesktop : null
+  if (desktop?.netFetch) {
+    return async (url, init = {}) => {
+      const r = await desktop.netFetch(url, {
+        method: init.method || 'GET',
+        headers: init.headers,
+        body: typeof init.body === 'string' ? init.body : undefined
+      })
+      if (r && typeof r.text === 'string') {
+        return { ok: !!r.ok, status: r.status || 0, json: async () => JSON.parse(r.text) }
+      }
+      throw new Error('proxy-error')
+    }
+  }
+  return undefined
+}
+
+/** @param {string} code */
+function translateErrorText(code) {
+  if (code === 'ai-not-configured') return t('errAiNotConfigured')
+  const m = code.match(/^ai-http-(\d+)$/)
+  if (m) return t('errAiHttp', { status: m[1] })
+  if (code === 'ai-network') return t('errAiNetwork')
+  if (code === 'ai-timeout') return t('errAiTimeout')
+  if (code === 'ai-parse') return t('errAiNetwork')
+  if (code === 'free-all-failed') return t('errFreeAll')
+  if (code === 'free-failed') return t('statusTranslatePartial')
+  return t('statusTranslateFail')
+}
+
+/** 块级译文缓存：相同文本块不重翻（改一个字只重翻该块，省配额提速） */
+const translationCache = new Map()
+
+async function runTranslation({ auto = false } = {}) {
+  if (translating) return
+  const provider = els.translateProvider?.value || 'none'
+  if (provider === 'none') return
+  const source = els.source.value
+  if (!source.trim()) return
+  const direction = els.translateDirection?.value || 'auto'
+  const output = els.translateOutput?.value || 'original'
+  const splitMode = ['items', 'merge', 'lines'].includes(els.textSplit?.value)
+    ? els.textSplit.value
+    : 'auto'
+
+  if (provider === 'ai' && !(els.aiBaseUrl?.value && els.aiApiKey?.value)) {
+    if (auto) return
+    if (els.aiPanel) els.aiPanel.hidden = false
+    setStatus(t('errAiNotConfigured'), 'err')
+    return
+  }
+
+  const blocks = parseBlocks(source, { splitMode })
+  /** @type {number[]} */
+  const idxs = []
+  /** @type {string[]} */
+  const texts = []
+  blocks.forEach((b, i) => {
+    if ((b.kind === 'title' || b.kind === 'heading' || b.kind === 'paragraph' || b.kind === 'item') && b.text.trim()) {
+      idxs.push(i)
+      texts.push(b.text)
+    }
+  })
+  if (!texts.length) {
+    if (!auto) setStatus(t('statusTranslateFail'), 'err')
+    return
+  }
+
+  // 免费引擎首用隐私提示：先记录，翻译完成后展示（避免被"翻译中…"状态覆盖）
+  const firstFreeUse = provider === 'free' && !localStorage.getItem('codepaste-privacy-ack')
+  if (firstFreeUse) localStorage.setItem('codepaste-privacy-ack', '1')
+
+  // 命中缓存的块直接复用；只翻译未命中的块
+  const cacheKey = (text) => `${provider}|${direction}|${text}`
+  /** @type {string[]} */
+  const pendingTexts = []
+  /** @type {number[]} */
+  const pendingIdxs = []
+  const cached = new Map()
+  texts.forEach((text, k) => {
+    const hit = translationCache.get(cacheKey(text))
+    if (hit != null) cached.set(k, hit)
+    else {
+      pendingTexts.push(text)
+      pendingIdxs.push(k)
+    }
+  })
+
+  translating = true
+  syncTranslateButton()
+  if (pendingTexts.length && (!auto || pendingTexts.length <= 2 || cached.size === 0)) {
+    setStatus(provider === 'ai'
+      ? t('statusTranslatingAi')
+      : t('statusTranslating', { done: 0, total: pendingTexts.length }))
+  }
+  try {
+    if (pendingTexts.length) {
+      const result = await translateTexts(pendingTexts, {
+        provider,
+        direction,
+        ai: {
+          baseUrl: els.aiBaseUrl?.value || '',
+          apiKey: els.aiApiKey?.value || '',
+          model: els.aiModel?.value || ''
+        },
+        fetchImpl: makeTranslateFetch(),
+        onProgress: (done, total) => setStatus(t('statusTranslating', { done, total }))
+      })
+      pendingTexts.forEach((text, k) => {
+        const translated = result.translations[k]
+        // 失败轮不写缓存：否则原文会被当成译文缓存住，重试永远命中坏结果
+        if (!result.error) translationCache.set(cacheKey(text), translated)
+      })
+      // auto 模式也如实报告：否则状态永远停在"翻译中…"，用户不知道失败
+      if (result.error) {
+        setStatus(translateErrorText(result.error), result.error === 'free-failed' ? '' : 'err')
+      } else {
+        setStatus(firstFreeUse ? t('privacyHint') : t('statusTranslated'), 'ok')
+      }
+    } else if (!auto) {
+      setStatus(t('statusTranslated'), 'ok')
+    }
+    // 汇总全量结果（缓存 + 新翻）
+    const finalTranslations = texts.map((text, k) =>
+      cached.has(k) ? cached.get(k) : translationCache.get(cacheKey(text)))
+    const map = new Map()
+    idxs.forEach((blockIndex, k) => map.set(blockIndex, finalTranslations[k]))
+    translations = map
+    translationsMeta = { source, provider, direction, splitMode }
+    renderPreview()
+  } catch (err) {
+    console.error(err)
+    if (!auto) setStatus(t('statusTranslateFail'), 'err')
+  } finally {
+    translating = false
+    syncTranslateButton()
+  }
+}
+
+/** 粘贴稳定后自动翻译（默认开启；仅译文/双语且缓存失效时触发） */
+function scheduleAutoTranslate() {
+  clearTimeout(autoTranslateTimer)
+  autoTranslateTimer = setTimeout(() => {
+    const provider = els.translateProvider?.value || 'none'
+    const output = els.translateOutput?.value || 'original'
+    if (effectiveMode() !== 'text') return
+    if (provider === 'none' || output === 'original') return
+    if (!els.autoTranslate?.checked) return
+    if (!els.source.value.trim() || translating) return
+    if (activeTranslations()) return
+    if (provider === 'ai' && !(els.aiBaseUrl?.value && els.aiApiKey?.value)) return
+    runTranslation({ auto: true })
+  }, 900)
+}
 
 async function downloadDocx() {
   if (exportBusy) return
@@ -1091,13 +1346,61 @@ const onTextSettingChange = () => {
 for (const el of [
   els.textScheme, els.textSplit, els.textBodyFont, els.textLatinFont, els.textBodySize,
   els.textHeadingFont, els.textLineSpacing, els.textIndentChars,
-  els.textAlign, els.textBodyAfter
+  els.textAlign, els.textBodyAfter, els.translateDirection, els.translateOutput
 ]) {
   el?.addEventListener('change', onTextSettingChange)
 }
 for (const el of [els.textBold, els.textItalic, els.textUnderline]) {
   el?.addEventListener('change', onTextSettingChange)
 }
+/** AI 面板展开时按预设预填接口地址/模型，用户只需贴 Key */
+function prefillAiDefaults() {
+  if (els.aiBaseUrl?.value) return
+  const preset = AI_PRESETS.find((p) => p.id === (els.aiPreset?.value || 'zhipu'))
+  if (preset && preset.baseUrl) {
+    if (els.aiBaseUrl) els.aiBaseUrl.value = preset.baseUrl
+    if (els.aiModel && !els.aiModel.value) els.aiModel.value = preset.model
+  }
+}
+
+els.translateProvider?.addEventListener('change', () => {
+  // 选 AI 翻译即展开设置（并预填）；离开 AI 自动收起
+  if (els.aiPanel) {
+    if (els.translateProvider.value === 'ai') {
+      prefillAiDefaults()
+      els.aiPanel.hidden = false
+    } else {
+      els.aiPanel.hidden = true
+    }
+  }
+  syncTranslateButton()
+  onTextSettingChange()
+})
+els.autoTranslate?.addEventListener('change', onTextSettingChange)
+els.btnTranslate?.addEventListener('click', () => runTranslation())
+
+// AI 设置面板
+els.btnAiSettings?.addEventListener('click', () => {
+  if (!els.aiPanel) return
+  if (!els.aiPanel.hidden) {
+    els.aiPanel.hidden = true
+    return
+  }
+  prefillAiDefaults()
+  els.aiPanel.hidden = false
+})
+els.aiPreset?.addEventListener('change', () => {
+  const preset = AI_PRESETS.find((p) => p.id === els.aiPreset.value)
+  if (preset && preset.id !== 'custom') {
+    if (els.aiBaseUrl) els.aiBaseUrl.value = preset.baseUrl
+    if (els.aiModel) els.aiModel.value = preset.model
+  }
+})
+els.btnAiSave?.addEventListener('click', () => {
+  persistPrefs()
+  if (els.aiPanel) els.aiPanel.hidden = true
+  setStatus(t('aiSaved'), 'ok')
+})
 
 els.btnFrame?.addEventListener('click', (e) => {
   e.stopPropagation()

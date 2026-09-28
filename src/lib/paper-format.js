@@ -63,6 +63,8 @@ export const PAPER_DEFAULTS = {
   captionSizePt: 10.5,
   refSizePt: 10.5,
   titleSizePt: 18,
+  translations: null, // Map<blockIndex, string>
+  translateOutput: 'original', // original | translated | bilingual
   codeCaption: true,
   codeCaptionLabel: '代码',
   code: {
@@ -220,9 +222,10 @@ export function buildPaperModel(blocks, options = {}) {
   let codeSeq = 0
   blocks.forEach((b, i) => {
     if (b.kind === 'title') {
-      paras.push({
+      const translation = opts.translations ? opts.translations.get(i) : null
+      const pushTitle = (body) => paras.push({
         kind: 'title',
-        runs: applyLatinFont(parseInline(b.text).map((r) => ({ ...r, bold: true })), opts.latinFont),
+        runs: applyLatinFont(parseInline(body).map((r) => ({ ...r, bold: true })), opts.latinFont),
         fontName: opts.headingFont,
         fontSizePt: opts.titleSizePt,
         align: 'center',
@@ -232,16 +235,25 @@ export function buildPaperModel(blocks, options = {}) {
         afterTwips: ptTwips(18),
         lineMultiple: opts.lineSpacing
       })
+      if (opts.translateOutput === 'translated' && translation != null) {
+        pushTitle(translation)
+      } else {
+        pushTitle(b.text)
+        if (opts.translateOutput === 'bilingual' && translation != null) {
+          pushTitle(translation)
+        }
+      }
       return
     }
     if (b.kind === 'heading') {
       const spec = headingSpec[Math.min(Math.max(b.level ?? 1, 1), 3)]
       const center = b.unnumbered || (centerL1 && (b.level ?? 1) === 1)
       const joinWithNumber = (body) => (b.number ? `${b.number}${joiner}${body}` : body)
+      const translation = opts.translations ? opts.translations.get(i) : null
 
-      paras.push({
+      const pushHeading = (body) => paras.push({
         kind: 'heading',
-        runs: applyLatinFont(parseInline(joinWithNumber(b.text)).map((r) => ({ ...r, bold: true })), opts.latinFont),
+        runs: applyLatinFont(parseInline(body).map((r) => ({ ...r, bold: true })), opts.latinFont),
         fontName: opts.headingFont,
         fontSizePt: spec.size,
         align: center ? 'center' : 'left',
@@ -253,6 +265,16 @@ export function buildPaperModel(blocks, options = {}) {
         level: b.level ?? 1,
         headingCenter: center
       })
+
+      if (opts.translateOutput === 'translated' && translation != null) {
+        pushHeading(joinWithNumber(translation))
+      } else {
+        pushHeading(joinWithNumber(b.text))
+        // 双语：标题也成对翻译（同一样式与编号）
+        if (opts.translateOutput === 'bilingual' && translation != null) {
+          pushHeading(joinWithNumber(translation))
+        }
+      }
       return
     }
     if (b.kind === 'formula') {
@@ -336,7 +358,16 @@ export function buildPaperModel(blocks, options = {}) {
     }
     if (b.kind === 'paragraph' || b.kind === 'item') {
       const joinWithNumber = (body) => (b.number ? `${b.number}${joiner}${body}` : body)
+      const translation = opts.translations ? opts.translations.get(i) : null
+      if (opts.translateOutput === 'translated' && translation != null) {
+        pushTextPara(b.kind === 'item' ? 'item' : 'body', joinWithNumber(translation))
+        return
+      }
       pushTextPara(b.kind === 'item' ? 'item' : 'body', joinWithNumber(b.text))
+      // 双语：译文沿用与原文相同的编号与样式
+      if (opts.translateOutput === 'bilingual' && translation != null) {
+        pushTextPara(b.kind === 'item' ? 'item' : 'body', joinWithNumber(translation))
+      }
       return
     }
     if (b.kind === 'code' && b.code && b.code.trim()) {

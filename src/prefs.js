@@ -37,6 +37,13 @@ const KEY = 'codepaste-prefs'
  * @property {boolean} [textItalic]
  * @property {boolean} [textUnderline]
  * @property {boolean} [textIndent] 旧版布尔首行缩进（兼容读取）
+ * @property {string} [translateProvider] none | free | ai
+ * @property {string} [translateDirection] auto | en2zh | zh2en
+ * @property {string} [translateOutput] original | translated | bilingual
+ * @property {boolean} [autoTranslate]
+ * @property {string} [aiBaseUrl]
+ * @property {string} [aiModel]
+ * @property {string} [aiApiKey]
  */
 
 /** @returns {Prefs} */

@@ -104,10 +104,52 @@ describe('buildPaperModel', () => {
     expect(paras[3].codeLast).toBe(true)
   })
 
-  
-  
-  
-  
+  it('applies translated output mode', () => {
+    const src = '1 Introduction\n\nDeep learning is powerful.'
+    const blocks = renumberBlocks(parseBlocks(src), 'academic')
+    const translations = new Map([[0, '引言'], [1, '深度学习非常强大。']])
+    const paras = buildPaperModel(blocks, { translations, translateOutput: 'translated' })
+    expect(paras[0].runs.map((r) => r.text).join('')).toBe('1 引言')
+    expect(paras[1].runs.map((r) => r.text).join('')).toBe('深度学习非常强大。')
+  })
+
+  it('interleaves original and translation in bilingual mode', () => {
+    const src = '正文第一段。'
+    const blocks = renumberBlocks(parseBlocks(src), 'academic')
+    const translations = new Map([[0, 'Body paragraph one.']])
+    const paras = buildPaperModel(blocks, { translations, translateOutput: 'bilingual' })
+    expect(paras).toHaveLength(2)
+    expect(paras[0].runs.map((r) => r.text).join('')).toBe('正文第一段。')
+    expect(paras[1].runs.map((r) => r.text).join('')).toBe('Body paragraph one.')
+  })
+
+  it('keeps item numbers on translations in bilingual and translated modes', () => {
+    const src = ['第一条内容。', '第二条内容。', '第三条内容。'].join('\n')
+    const blocks = renumberBlocks(parseBlocks(src), 'academic')
+    const translations = new Map([[0, 'First.'], [1, 'Second.'], [2, 'Third.']])
+    const bilingual = buildPaperModel(blocks, { translations, translateOutput: 'bilingual' })
+    const texts = bilingual.map((p) => p.runs.map((r) => r.text).join(''))
+    expect(texts).toEqual([
+      '1) 第一条内容。', '1) First.',
+      '2) 第二条内容。', '2) Second.',
+      '3) 第三条内容。', '3) Third.'
+    ])
+
+    const translated = buildPaperModel(blocks, { translations, translateOutput: 'translated' })
+    expect(translated.map((p) => p.runs.map((r) => r.text).join(''))).toEqual([
+      '1) First.', '2) Second.', '3) Third.'
+    ])
+  })
+
+  it('translates headings in bilingual mode with matching numbers', () => {
+    const src = ['1 Introduction', '', 'Body text.'].join('\n')
+    const blocks = renumberBlocks(parseBlocks(src), 'academic')
+    const translations = new Map([[0, '引言'], [1, '正文内容。']])
+    const paras = buildPaperModel(blocks, { translations, translateOutput: 'bilingual' })
+    const texts = paras.map((p) => p.runs.map((r) => r.text).join(''))
+    expect(texts).toEqual(['1 Introduction', '1 引言', 'Body text.', '正文内容。'])
+  })
+
   it('formats captions centered and refs with hanging indent', () => {
     const src = [
       '图 1 系统架构图',
@@ -171,15 +213,6 @@ describe('applyLatinFont', () => {
 })
 
 describe('paperParasToPlainText', () => {
-  
-  it('flattens paragraphs and keeps code lines together', () => {
-    const src = ['1 引言', '', '正文。', '', '```js', 'let a = 1', 'let b = 2', '```'].join('\n')
-    const paras = buildPaperModel(renumberBlocks(parseBlocks(src), 'academic'), { highlight: stubHighlight })
-    const text = paperParasToPlainText(paras)
-    expect(text).toBe('1 引言\n\n正文。\n\n代码 1\nlet a = 1\nlet b = 2')
-  })
-})
-
   it('flattens tables and keeps code lines together in plain text', () => {
     const src = [
       '说明文字。',
@@ -197,3 +230,11 @@ describe('paperParasToPlainText', () => {
     const text = paperParasToPlainText(paras)
     expect(text).toBe('说明文字。\n\n名称 | 数值\n甲 | 1\n乙 | 2\n\n代码 1\nlet a = 1')
   })
+
+  it('flattens paragraphs and keeps code lines together', () => {
+    const src = ['1 引言', '', '正文。', '', '```js', 'let a = 1', 'let b = 2', '```'].join('\n')
+    const paras = buildPaperModel(renumberBlocks(parseBlocks(src), 'academic'), { highlight: stubHighlight })
+    const text = paperParasToPlainText(paras)
+    expect(text).toBe('1 引言\n\n正文。\n\n代码 1\nlet a = 1\nlet b = 2')
+  })
+})
