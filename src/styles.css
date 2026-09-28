@@ -780,12 +780,6 @@ textarea:focus { background: #fff; }
   0%, 70%, 100% { opacity: 0.55; }
   80% { opacity: 0.95; }
 }
-.foot-meta {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--faint);
-  white-space: nowrap;
-}
 
 @media (min-width: 1400px) {
   .titlebar, .toolbar, .statusbar { padding-inline: 22px; }
@@ -814,7 +808,6 @@ textarea:focus { background: #fff; }
     min-height: 280px;
   }
   textarea, .preview-stage, .preview-wrap { min-height: 260px; }
-  .foot-meta { margin-left: 0; width: 100%; }
 }
 
 @media (max-width: 640px) {

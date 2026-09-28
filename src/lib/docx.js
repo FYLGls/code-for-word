@@ -8,6 +8,7 @@ import {
   ShadingType,
   Table,
   TableCell,
+  TableLayoutType,
   TableRow,
   TextRun,
   WidthType,
@@ -15,11 +16,10 @@ import {
 } from 'docx'
 import {
   applyListingStyle,
-  listingSideIndents,
-  resolveCodeInsetTwips,
-  codeInsetPrefix,
-  codeInsetSuffix
+  resolveListingGeometry,
+  lineNumberGutterTwips
 } from './lines.js'
+import { cmToTwips } from '../themes.js'
 import { resolveFrameStyle } from './frame.js'
 import {
   shouldShowCaption,
@@ -55,18 +55,25 @@ const PAPER_SIZES = {
 export function resolveDocxPageSetup(options) {
   const id = typeof options?.paperId === 'string' ? options.paperId : 'fit'
   const size = PAPER_SIZES[id] || PAPER_SIZES.a4
-  const custom = listingSideIndents(0, options?.sideMarginTwips, options?.pageContentTwips)
+  const geo = resolveListingGeometry(
+    options?.sideMarginTwips,
+    options?.codeInsetTwips,
+    options?.pageContentTwips
+  )
 
   let left
   let right
-  if (custom.left > 0 || custom.right > 0) {
-    left = custom.left || custom.right
-    right = custom.right || custom.left
+  if (geo.left > 0 || geo.right > 0) {
+    // Explicit UI 页边距 → real Word page margins (honor 0 on one side)
+    left = Math.max(0, geo.left)
+    right = Math.max(0, geo.right)
   } else if (Number.isFinite(options?.pageContentTwips) && options.pageContentTwips > 0) {
+    // Paper chosen, margin "默认" → derive from paper's content width
     const pair = Math.max(0, size.width - options.pageContentTwips)
     left = right = Math.max(720, Math.floor(pair / 2))
   } else {
-    left = right = 1440
+    // 适应纸张 + 默认：2cm (preview is flush; DOCX still needs printable margins)
+    left = right = cmToTwips(2)
   }
 
   const maxPair = Math.max(0, size.width - 2400)
@@ -79,7 +86,10 @@ export function resolveDocxPageSetup(options) {
   return {
     size,
     margin: { top: 1440, bottom: 1440, left, right },
-    contentWidth: Math.max(1200, size.width - left - right)
+    contentWidth: Math.max(1200, size.width - left - right),
+    codeInset: geo.inset,
+    // Explicit 页边距 only. Derived "默认" stays 0 so the frame is not indented twice.
+    frameIndent: { left: geo.left, right: geo.right }
   }
 }
 
@@ -99,12 +109,11 @@ function underEdge(accentHex) {
  * Avoids per-paragraph side borders that Word draws as broken rails.
  * @param {import('./frame.js').FrameStyle} frame
  * @param {string} accentHex
- * @param {boolean} hasCaption
+ * @param {boolean} rowRules draw a rule between every row; outer frame stays on the table
  */
-function tableBorders(frame, accentHex, hasCaption) {
+function tableBorders(frame, accentHex, rowRules) {
   const f = frameEdge(accentHex)
-  const under = underEdge(accentHex)
-  const insideH = hasCaption ? under : NIL_BORDER
+  const insideH = rowRules ? underEdge(accentHex) : NIL_BORDER
   if (frame === 'box') {
     return {
       top: f,
@@ -187,9 +196,7 @@ export async function linesToDocxBlob(lines, options) {
   const accentHex = (options.accentLeft || '#007ACC').replace('#', '')
   const frame = resolveFrameStyle(options.frameStyle)
   const pageSetup = resolveDocxPageSetup(options)
-  const codeInset = resolveCodeInsetTwips(options.codeInsetTwips, options.pageContentTwips, options.sideMarginTwips)
-  const insetLeft = codeInsetPrefix(options, codeInset)
-  const insetRight = codeInsetSuffix(options, codeInset)
+  const codeInset = pageSetup.codeInset || 0
   const useExact = pt < 16
   const line = Math.max(240, Math.round(pt * 20 * 1.35))
   const spacing = useExact
@@ -209,18 +216,9 @@ export async function linesToDocxBlob(lines, options) {
   const capSpacing = { before: 0, after: 0, line: 276, lineRule: LineRuleType.AUTO }
 
   /** @param {import('../themes.js').StyledRun[]} row */
-  function codeRuns(row) {
+  function codeTextRuns(row) {
     /** @type {InstanceType<typeof TextRun>[]} */
     const runs = []
-    if (insetLeft) {
-      runs.push(new TextRun({
-        text: insetLeft,
-        font: fontName,
-        size: fontSize,
-        color: fg,
-        noProof: true
-      }))
-    }
     if (!row.length) {
       runs.push(new TextRun({
         text: ' ',
@@ -244,15 +242,6 @@ export async function linesToDocxBlob(lines, options) {
         }))
       }
     }
-    if (insetRight) {
-      runs.push(new TextRun({
-        text: insetRight,
-        font: fontName,
-        size: fontSize,
-        color: fg,
-        noProof: true
-      }))
-    }
     return runs
   }
 
@@ -274,67 +263,112 @@ export async function linesToDocxBlob(lines, options) {
     ]
   }))
 
-  /** @type {InstanceType<typeof Paragraph>[]} */
-  // One paragraph per line (hard Enter). Soft breaks show as ↓ in Word.
-  const codeParas = (rows.length ? rows : [[]]).map((row, i) => {
-    /** @type {InstanceType<typeof TextRun>[]} */
-    const runs = []
-    if (options.lineNumbers) {
-      runs.push(new TextRun({
-        text: `${i + 1}${suffix}  `,
-        font: fontName,
-        size: fontSize,
-        color: lnColor,
-        bold: !!options.forceBold,
-        italics: !!options.forceItalic,
-        noProof: true
-      }))
-    }
-    runs.push(...codeRuns(row))
+  const rowRules = !!options.rowRules
+  const page = pageSetup
+  // pgMar already equals 页边距, so a full-width table sits on both margin edges
+  // ("顶着左右两边"). Paste keeps the frame inside the text column via \li/\ri.
+  // Pull the frame in by that same amount, and shorten it on the right.
+  const pullLeft = Math.max(0, page.frameIndent?.left || 0)
+  const pullRight = Math.max(0, page.frameIndent?.right || 0)
+  const frameWidth = Math.max(2400, page.contentWidth - pullLeft - pullRight)
+  const workRows = rows.length ? rows : [[]]
+  const zeroMargin = { top: 0, bottom: 0, left: 0, right: 0 }
+  // One fixed table. Nested tables overflow the cell; Word/WPS then drop
+  // both pgMar and cell padding, so 页边距 and 代码边距 look ignored.
+  // Code inset is a real paragraph indent (w:ind) — the ruler shows it.
+  const gutterW = options.lineNumbers
+    ? Math.min(
+      Math.max(480, lineNumberGutterTwips(workRows.length, options)),
+      Math.floor(frameWidth * 0.28)
+    )
+    : 0
+  const codeColW = Math.max(600, frameWidth - gutterW)
+  const colWidths = options.lineNumbers ? [gutterW, codeColW] : [frameWidth]
+  const codeIndent = codeInset > 0 ? { left: codeInset, right: codeInset } : undefined
+  const cellShade = noFill ? undefined : { type: ShadingType.CLEAR, fill }
+
+  /**
+   * @param {(InstanceType<typeof Paragraph>)[]} children
+   * @param {number} width
+   * @param {number} [span]
+   * @param {typeof CELL_NO_BORDERS | null} [borders]
+   */
+  function frameCell(children, width, span, borders) {
+    return new TableCell({
+      borders: borders || CELL_NO_BORDERS,
+      width: { size: width, type: WidthType.DXA },
+      margins: zeroMargin,
+      shading: cellShade,
+      columnSpan: span || undefined,
+      verticalAlign: VerticalAlign.CENTER,
+      children
+    })
+  }
+
+  /** @param {import('../themes.js').StyledRun[]} row */
+  function codeParagraph(row) {
     return new Paragraph({
       alignment: AlignmentType.LEFT,
       spacing,
       shading,
-      children: runs.length
-        ? runs
-        : [new TextRun({ text: ' ', font: fontName, size: fontSize, noProof: true })]
-    })
-  })
-
-  const page = pageSetup
-  const tableWidth = page.contentWidth
-
-  /** @param {InstanceType<typeof Paragraph>[]} paras */
-  function cell(paras, pad) {
-    return new TableCell({
-      borders: CELL_NO_BORDERS,
-      width: { size: tableWidth, type: WidthType.DXA },
-      margins: {
-        top: pad.top,
-        bottom: pad.bottom,
-        left: pad.left,
-        right: pad.right
-      },
-      verticalAlign: VerticalAlign.CENTER,
-      children: paras
+      indent: codeIndent,
+      children: codeTextRuns(row)
     })
   }
 
+  const captionRule = (!rowRules && capLines.length)
+    ? {
+      ...CELL_NO_BORDERS,
+      bottom: underEdge(accentHex)
+    }
+    : null
+
   /** @type {InstanceType<typeof TableRow>[]} */
-  const tableRows = [
-    ...captionParas.map((p) => new TableRow({
-      children: [cell([p], { top: 40, bottom: 40, left: 100, right: 100 })]
-    })),
-    new TableRow({
-      children: [cell(codeParas, { top: 60, bottom: 60, left: 40, right: 140 })]
-    })
-  ]
+  const tableRows = []
+  for (const p of captionParas) {
+    tableRows.push(new TableRow({
+      children: [frameCell([p], frameWidth, options.lineNumbers ? 2 : undefined, captionRule)]
+    }))
+  }
+  workRows.forEach((row, i) => {
+    if (!options.lineNumbers) {
+      tableRows.push(new TableRow({
+        children: [frameCell([codeParagraph(row)], frameWidth)]
+      }))
+      return
+    }
+    tableRows.push(new TableRow({
+      children: [
+        frameCell([
+          new Paragraph({
+            alignment: AlignmentType.LEFT,
+            spacing,
+            shading,
+            children: [
+              new TextRun({
+                text: `${i + 1}${suffix}  `,
+                font: fontName,
+                size: fontSize,
+                color: lnColor,
+                bold: !!options.forceBold,
+                italics: !!options.forceItalic,
+                noProof: true
+              })
+            ]
+          })
+        ], gutterW),
+        frameCell([codeParagraph(row)], codeColW)
+      ]
+    }))
+  })
 
   const listingTable = new Table({
-    width: { size: tableWidth, type: WidthType.DXA },
-    columnWidths: [tableWidth],
+    width: { size: colWidths.reduce((a, b) => a + b, 0), type: WidthType.DXA },
+    columnWidths: colWidths,
+    indent: pullLeft > 0 ? { size: pullLeft, type: WidthType.DXA } : undefined,
+    layout: TableLayoutType.FIXED,
     rows: tableRows,
-    borders: tableBorders(frame, accentHex, !!capLines.length)
+    borders: tableBorders(frame, accentHex, rowRules)
   })
 
   const doc = new Document({

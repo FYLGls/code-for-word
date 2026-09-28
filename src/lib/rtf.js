@@ -1,12 +1,11 @@
 /** RTF paragraphs Word recognizes: \\b / \\cf / \\f / \\fs — not a table. */
 
 import {
-  measureListingTwips,
-  listingSideIndents,
   applyListingStyle,
-  resolveCodeInsetTwips,
+  resolveListingGeometry,
   codeInsetPrefix,
-  codeInsetSuffix
+  codeInsetSuffix,
+  lineNumberGutterTwips
 } from './lines.js'
 import { resolveFrameStyle, rtfParaBorders } from './frame.js'
 import {
@@ -127,6 +126,29 @@ function captionBorders(frame, ac, isFirst) {
  * @param {number} ac
  * @param {boolean} hasCaption
  */
+/**
+ * Per-line borders. Box + underlines uses one paragraph per line so each row
+ * can have a rule; the last line keeps the outer bottom stroke.
+ * @param {import('./frame.js').FrameStyle} frame
+ * @param {number} ac
+ * @param {number} index
+ * @param {number} total
+ * @param {boolean} hasCaption
+ * @param {boolean} rowRules
+ */
+function codeLineBorders(frame, ac, index, total, hasCaption, rowRules) {
+  const frameStroke = `\\brdrs\\brdrw40\\brdrcf${ac}`
+  const under = rowRules ? `\\brdrb\\brdrs\\brdrw20\\brdrcf${ac}` : ''
+  const side = frame === 'bar'
+    ? `\\brdrl${frameStroke}`
+    : `\\brdrl${frameStroke}\\brdrr${frameStroke}`
+  const top = frame === 'box' && index === 0 && !hasCaption ? `\\brdrt${frameStroke}` : ''
+  const bottom = frame === 'box' && index === total - 1
+    ? `\\brdrb${frameStroke}`
+    : under
+  return `${top}${side}${bottom}`
+}
+
 function codeBlockBorders(frame, ac, hasCaption) {
   const s = `\\brdrs\\brdrw40\\brdrcf${ac}`
   if (frame === 'box') {
@@ -150,10 +172,11 @@ function codeBlockBorders(frame, ac, hasCaption) {
  *  borders: string
  * }} p
  */
-function paraHead({ left, right, linePart, fontSizeHalfPoints, shade, fg, borders }) {
+function paraHead({ left, right, linePart, fontSizeHalfPoints, shade, fg, borders, insetTab }) {
   return (
     `\\pard\\plain\\ql\\hyphpar0\\nowidctlpar` +
     `\\li${left}\\ri${right}\\sa0\\sb0${linePart}` +
+    (insetTab || '') +
     `\\f0\\fs${fontSizeHalfPoints}${shade}\\cf${fg}${borders} `
   )
 }
@@ -203,11 +226,25 @@ export function linesToRtf(lines, options) {
   const capColorHex = resolveCaptionColor(options)
   const capBold = resolveCaptionBold(options)
   const capItalic = resolveCaptionItalic(options)
-  const block = measureListingTwips(rows, options)
-  const { left, right } = listingSideIndents(block, options.sideMarginTwips, options.pageContentTwips)
-  const codeInset = resolveCodeInsetTwips(options.codeInsetTwips, options.pageContentTwips, options.sideMarginTwips)
+  const geo = resolveListingGeometry(
+    options.sideMarginTwips,
+    options.codeInsetTwips,
+    options.pageContentTwips
+  )
+  const left = geo.left
+  const right = geo.right
+  const codeInset = geo.inset
   const insetLeft = codeInsetPrefix(options, codeInset)
   const insetRight = codeInsetSuffix(options, codeInset)
+  // Word \\tx is absolute from the page content edge (same origin as \\li),
+  // so the stop must include left indent + gutter + inset — not inset alone.
+  const gutterTwips = options.lineNumbers
+    ? Math.max(480, lineNumberGutterTwips(Math.max(rows.length, 1), options))
+    : 0
+  const useInsetTab = !!(options.lineNumbers && codeInset > 0)
+  const insetTab = useInsetTab
+    ? `\\tx${left + gutterTwips + codeInset} `
+    : ''
   const linePart = pt >= 16
     ? '\\sl276\\slmult1 '
     : `\\sl${Math.max(240, Math.round(pt * 20 * 1.35))}\\slmult0 `
@@ -251,11 +288,14 @@ export function linesToRtf(lines, options) {
   /** @param {import('../themes.js').StyledRun[]} row @param {number} i */
   function lineContent(row, i) {
     let content = ''
-    // Line numbers stay flush to the left marker; pads sit around the code only.
+    // Line numbers stay flush to the left marker; inset is \\tab (exact) or spaces.
     if (options.lineNumbers) {
       content += `{\\noproof\\f0\\cf${ln}${lnBold}${lnItalic} ${escapeRtf(`${i + 1}${suffix}  `)}}`
-    }
-    if (insetLeft) {
+      if (useInsetTab) content += '\\tab '
+      else if (insetLeft) {
+        content += `{\\noproof\\f0\\cf${fg}\\b0\\i0 ${escapeRtf(insetLeft)}}`
+      }
+    } else if (insetLeft) {
       content += `{\\noproof\\f0\\cf${fg}\\b0\\i0 ${escapeRtf(insetLeft)}}`
     }
     content += codeRuns(row)
@@ -266,7 +306,7 @@ export function linesToRtf(lines, options) {
   }
 
   let captionPart = ''
-  if (capLines.length) {
+  if (capLines.length && !options.rowRules) {
     captionPart = capLines.map((text, i) => {
       const borders = captionBorders(frame, ac, i === 0)
       return (
@@ -278,8 +318,42 @@ export function linesToRtf(lines, options) {
     }).join('')
   }
 
+  const rowRules = !!options.rowRules
   let body
-  if (frame === 'box') {
+  if (rowRules) {
+    // Paragraph \\brdrb between lines breaks the side rails. A single-level
+    // table matches DOCX: outer stroke on the row, thin rule between rows.
+    const cellRight = Math.max(left + 2400, geo.page - right)
+    const width = cellRight - left
+    const F = `\\brdrs\\brdrw40\\brdrcf${ac} `
+    const U = `\\brdrs\\brdrw20\\brdrcf${ac} `
+    /** @type {{ caption: boolean, last: boolean, inner: string }[]} */
+    const items = [
+      ...capLines.map((text) => ({ caption: true, last: false, inner: escapeRtf(text) })),
+      ...rows.map((row, i) => ({
+        caption: false,
+        last: i === rows.length - 1,
+        inner: lineContent(row, i)
+      }))
+    ]
+    body = items.map((item) => {
+      let def = `\\trowd\\trgaph0\\trleft${left}\\trftsWidth3\\trwWidth${width}`
+      if (frame === 'box') def += `\\trbrdrt${F}\\trbrdrl${F}\\trbrdrb${F}\\trbrdrr${F}`
+      else if (frame === 'rails') def += `\\trbrdrl${F}\\trbrdrr${F}`
+      else def += `\\trbrdrl${F}`
+      def += `\\trbrdrh${U}\\clvertalc`
+      if (frame === 'box') def += `\\clbrdrt${F}`
+      def += `\\clbrdrl${F}`
+      def += `\\clbrdrb${frame === 'box' && item.last ? F : U}`
+      if (frame !== 'bar') def += `\\clbrdrr${F}`
+      if (!noFill) def += `\\clcbpat${item.caption ? capBg : bg}`
+      def += `\\cellx${cellRight}`
+      const head = item.caption
+        ? `\\pard\\intbl\\plain\\ql\\f1\\fs${capFs}\\cf${capCf}${capB}${capI}${capShade} `
+        : `\\pard\\intbl\\plain\\ql${linePart}\\f0\\fs${fontSizeHalfPoints}${shade}\\cf${fg} `
+      return `${def}\n${head}${item.inner}\\cell\\row`
+    }).join('\n')
+  } else if (frame === 'box') {
     // One paragraph + \\line keeps a continuous box; per-line \\par box borders
     // have made Word reject the clipboard paste on some builds.
     const boxBorders = codeBlockBorders(frame, ac, !!capLines.length)
@@ -290,13 +364,14 @@ export function linesToRtf(lines, options) {
       fontSizeHalfPoints,
       shade,
       fg,
-      borders: boxBorders
+      borders: boxBorders,
+      insetTab
     })
     const inner = rows.map((row, i) => lineContent(row, i)).join('\\line\n')
     body = `${head}${inner}\\par`
   } else {
     body = rows.map((row, i) => {
-      const borders = rtfParaBorders(frame, ac, i, rows.length, !!capLines.length)
+      const borders = codeLineBorders(frame, ac, i, rows.length, !!capLines.length, rowRules)
       const head = paraHead({
         left,
         right,
@@ -304,7 +379,8 @@ export function linesToRtf(lines, options) {
         fontSizeHalfPoints,
         shade,
         fg,
-        borders
+        borders,
+        insetTab
       })
       return `${head}${lineContent(row, i)}\\par`
     }).join('\n')

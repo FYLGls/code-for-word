@@ -226,6 +226,7 @@ const els = {
   forceBold: document.getElementById('forceBold'),
   forceItalic: document.getElementById('forceItalic'),
   lineNumbers: document.getElementById('lineNumbers'),
+  rowRules: document.getElementById('rowRules'),
   source: document.getElementById('source'),
   preview: document.getElementById('preview'),
   metaSource: document.getElementById('metaSource'),
@@ -295,6 +296,7 @@ let frameHover = /** @type {import('./lib/frame.js').FrameStyle | null} */ (null
 
 let timer = 0
 let hostOk = false
+let exportBusy = false
 /** @type {{ lines: import('./themes.js').StyledRun[][], language: string, theme: import('./themes.js').Theme } | null} */
 let latest = null
 let selectsReady = false
@@ -349,6 +351,7 @@ function collectPrefs() {
     forceBold: !!els.forceBold?.checked,
     forceItalic: !!els.forceItalic?.checked,
     lineNumbers: !!els.lineNumbers?.checked,
+    rowRules: !!els.rowRules?.checked,
     frameStyle,
     captionEnabled: !!els.captionEnabled?.checked,
     captionFont: els.captionFont?.value || DEFAULT_CAPTION_FONT,
@@ -435,6 +438,7 @@ function applyPrefs(p) {
   if (els.forceBold) els.forceBold.checked = !!p.forceBold
   if (els.forceItalic) els.forceItalic.checked = !!p.forceItalic
   if (els.lineNumbers) els.lineNumbers.checked = p.lineNumbers !== false
+  if (els.rowRules) els.rowRules.checked = p.rowRules !== false
   if (els.captionEnabled) els.captionEnabled.checked = !!p.captionEnabled
   if (els.captionBold) els.captionBold.checked = !!p.captionBold
   if (els.captionItalic) els.captionItalic.checked = !!p.captionItalic
@@ -472,6 +476,7 @@ function fillKeyedSelect(el, options, keep, fallback) {
     el.appendChild(opt)
   }
   el.value = keep || fallback
+  if (![...el.options].some((o) => o.value === el.value)) el.value = fallback
 }
 
 function refillLabeledSelects() {
@@ -647,6 +652,7 @@ function currentOptions() {
     fontName: els.fontFamily?.value || 'Consolas',
     fontSizePt: Number(els.fontSize.value) || 9,
     lineNumbers: els.lineNumbers.checked,
+    rowRules: els.rowRules ? els.rowRules.checked : true,
     lineNumberSuffix: '.',
     frameStyle: frameHover || frameStyle,
     forceBold: !!els.forceBold?.checked,
@@ -1005,23 +1011,27 @@ async function refreshHost() {
 }
 
 async function copyToWord() {
+  if (exportBusy) return
   if (!els.source.value.trim()) {
     setStatus(t('statusNeedCode'), 'err')
     return
   }
+  exportBusy = true
   renderPreview()
   const eff = effectiveMode()
+  const desktop = typeof window !== 'undefined' ? window.codepasteDesktop : null
+  const skipHtml = !!desktop?.isDesktop // 桌面端走原生 RTF 通道，无需生成 HTML
   try {
     let result
     if (eff === 'text' && latestPaper) {
       const exportOpts = paperExportOptions()
       const rtf = paperToRtf(latestPaper.paras, exportOpts)
-      const html = paperToWordHtml(latestPaper.paras, exportOpts)
+      const html = skipHtml ? '' : paperToWordHtml(latestPaper.paras, exportOpts)
       result = await writeClipboard({ rtf, html, plain: latestPaper.plainText })
     } else {
       const opts = currentOptions()
       const rtf = linesToRtf(latest.lines, opts)
-      const html = linesToWordHtml(latest.lines, opts)
+      const html = skipHtml ? '' : linesToWordHtml(latest.lines, opts)
       result = await writeClipboard({ rtf, html, plain: els.source.value })
     }
     if (result.via === 'native-rtf') setStatus(t('statusCopied'), 'ok')
@@ -1035,6 +1045,8 @@ async function copyToWord() {
   } catch (err) {
     console.error(err)
     setStatus(t('statusCopyFail'), 'err')
+  } finally {
+    exportBusy = false
   }
 }
 
@@ -1202,10 +1214,12 @@ function scheduleAutoTranslate() {
 }
 
 async function downloadDocx() {
+  if (exportBusy) return
   if (!els.source.value.trim()) {
     setStatus(t('statusNeedCode'), 'err')
     return
   }
+  exportBusy = true
   renderPreview()
   const eff = effectiveMode()
   try {
@@ -1220,6 +1234,8 @@ async function downloadDocx() {
   } catch (err) {
     console.error(err)
     setStatus(t('statusDocxFail'), 'err')
+  } finally {
+    exportBusy = false
   }
 }
 
@@ -1293,6 +1309,7 @@ els.accent?.addEventListener('change', onSettingChange)
 els.forceBold?.addEventListener('change', onSettingChange)
 els.forceItalic?.addEventListener('change', onSettingChange)
 els.lineNumbers.addEventListener('change', onSettingChange)
+els.rowRules?.addEventListener('change', onSettingChange)
 els.captionEnabled?.addEventListener('change', () => {
   syncCaptionRow(true)
   onSettingChange()

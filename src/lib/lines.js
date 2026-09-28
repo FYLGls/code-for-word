@@ -54,6 +54,55 @@ const MIN_CONTENT_TWIPS = 2400
 export const FIT_SIDE_PAD_TWIPS = 0
 
 /**
+ * Resolve page content width used for clamping (twips).
+ * @param {number | null | undefined} pageContentTwips
+ */
+export function resolvePageBudgetTwips(pageContentTwips) {
+  if (pageContentTwips === null) return SAFE_FIT_PAGE_TWIPS
+  if (Number.isFinite(pageContentTwips) && pageContentTwips > 0) return pageContentTwips
+  return PAGE_CONTENT_TWIPS
+}
+
+/**
+ * Side margins + code inset that always fit the page budget.
+ * Priority: keep MIN_CONTENT_TWIPS, then honor inset, then side margins.
+ * @param {{ left?: number | null, right?: number | null } | number | null | undefined} sideMarginTwips
+ * @param {number | null | undefined} codeInsetTwips
+ * @param {number | null | undefined} pageContentTwips
+ * @returns {{ left: number, right: number, inset: number, page: number }}
+ */
+export function resolveListingGeometry(sideMarginTwips, codeInsetTwips, pageContentTwips) {
+  const page = resolvePageBudgetTwips(pageContentTwips)
+  let { left, right } = listingSideIndents(0, sideMarginTwips, pageContentTwips)
+  let inset = (codeInsetTwips != null && Number.isFinite(codeInsetTwips) && codeInsetTwips > 0)
+    ? Math.round(codeInsetTwips)
+    : 0
+
+  const room = () => page - left - right - inset * 2
+  if (room() >= MIN_CONTENT_TWIPS) {
+    return { left, right, inset, page }
+  }
+
+  // Shrink inset first (keep at least ~30% of request when possible), then margins.
+  const maxInsetPair = Math.max(0, page - MIN_CONTENT_TWIPS - left - right)
+  inset = Math.min(inset, Math.floor(maxInsetPair / 2))
+  if (room() >= MIN_CONTENT_TWIPS) {
+    return { left, right, inset, page }
+  }
+
+  const maxSidePair = Math.max(0, page - MIN_CONTENT_TWIPS - inset * 2)
+  if (left + right > maxSidePair && left + right > 0) {
+    const scale = maxSidePair / (left + right)
+    left = Math.floor(left * scale)
+    right = Math.floor(right * scale)
+  }
+  // Final clamp on inset if still tight
+  const maxInsetPair2 = Math.max(0, page - MIN_CONTENT_TWIPS - left - right)
+  inset = Math.min(inset, Math.floor(maxInsetPair2 / 2))
+  return { left, right, inset, page }
+}
+
+/**
  * Per-side code↔marker pad in twips (symmetric left/right).
  * null/undefined/≤0 → 0; clamped so L+R pads + side margins still leave MIN_CONTENT_TWIPS.
  * @param {number | null | undefined} userTwips
@@ -61,17 +110,7 @@ export const FIT_SIDE_PAD_TWIPS = 0
  * @param {{ left?: number | null, right?: number | null } | number | null | undefined} sideMarginTwips
  */
 export function resolveCodeInsetTwips(userTwips, pageContentTwips, sideMarginTwips) {
-  if (userTwips == null || !Number.isFinite(userTwips) || userTwips <= 0) return 0
-  const fit = pageContentTwips === null
-  const page = fit
-    ? SAFE_FIT_PAGE_TWIPS
-    : (Number.isFinite(pageContentTwips) && pageContentTwips > 0
-      ? pageContentTwips
-      : PAGE_CONTENT_TWIPS)
-  const sides = listingSideIndents(0, sideMarginTwips, pageContentTwips)
-  const maxPair = Math.max(0, page - MIN_CONTENT_TWIPS - sides.left - sides.right)
-  const maxPerSide = Math.floor(maxPair / 2)
-  return Math.min(Math.round(userTwips), maxPerSide)
+  return resolveListingGeometry(sideMarginTwips, userTwips, pageContentTwips).inset
 }
 
 /**
@@ -81,7 +120,8 @@ export function resolveCodeInsetTwips(userTwips, pageContentTwips, sideMarginTwi
  */
 export function codeInsetSpaceCount(insetTwips, fontSizePt = 10) {
   if (!insetTwips || insetTwips <= 0) return 0
-  const charTwips = Math.ceil((fontSizePt || 10) * 12)
+  // Consolas/Courier half-em ≈ 0.5em; pt*10 twips is closer than pt*12 for Word.
+  const charTwips = Math.max(60, Math.round((fontSizePt || 10) * 10))
   return Math.max(1, Math.round(insetTwips / charTwips))
 }
 

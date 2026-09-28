@@ -16,5 +16,8 @@ contextBridge.exposeInMainWorld('codepasteDesktop', {
   // 主进程网络代理（AI 翻译用）；返回 { ok, status, text } 的 Response 近似对象
   netFetch(url, init) {
     return ipcRenderer.invoke('net:fetch', url, init)
+  },
+  writeRtf(payload) {
+    return ipcRenderer.invoke('clipboard:writeRtf', payload)
   }
 })
