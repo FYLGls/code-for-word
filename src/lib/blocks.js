@@ -317,6 +317,39 @@ function decodeEntities(s) {
     .replace(/<br\s*\/?>/gi, '\n')
 }
 
+/** OCR 残留清理：全角数字/字母/句点/〔〕/％→半角（１．１→1.1、ＢＥＲＴ→BERT） */
+function normalizeFullWidth(s) {
+  return s
+    .replace(/[０-９Ａ-Ｚａ-ｚ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/．/g, '.')
+    .replace(/％/g, '%')
+    .replace(/〔/g, '[')
+    .replace(/〕/g, ']')
+}
+
+/** OCR 字间空格清理：只对"OCR 行"生效——该行 CJK 字间空格密度 ≥ 0.25
+ * （如"基 于 深 度 学 习"）才整行清理；正常"第X章 标题"的排版空格保留。
+ * 换行不动，英文词间空格保留。另清理 "95 . 2"（数字句点间）与 "[ 1 ]"（括号内侧）。 */
+function squeezeCjkSpaces(s) {
+  const isOcrLine = (line) => {
+    const cjkCount = (line.match(/[\u3400-\u9fff\u3040-\u30ff]/g) || []).length
+    if (cjkCount < 4) return false
+    // 仅统计空格（含全角空格）；制表符是 TSV/缩进的结构字符，不算 OCR 字距
+    const gaps = (line.match(/[\u3400-\u9fff\u3040-\u30ff][ \u3000]+(?=[\u3400-\u9fff\u3040-\u30ff])/g) || []).length
+    return gaps / cjkCount >= 0.25
+  }
+  const squeezeLine = (line) => line
+    .replace(/([\u3400-\u9fff\u3040-\u30ff，。；：、])[ \u3000]+(?=[\u3400-\u9fff\u3040-\u30ff，。；：、])/g, '$1')
+  return s
+    .split('\n')
+    .map((line) => (isOcrLine(line) ? squeezeLine(line) : line))
+    .join('\n')
+    .replace(/(\d)[ \t]+(?=[.\d%])/g, '$1')
+    .replace(/\.[ \t]+(?=\d)/g, '.')
+    .replace(/\[[ \t]+(?=[\w\]])/g, '[')
+    .replace(/[ \t]+(?=\])/g, '')
+}
+
 /** 任务清单勾选标记 [x]/[ ]/[] → ☑/☐（保留状态便于 Word 中查看） */
 function decorateCheckbox(s) {
   return s.replace(/^\[( |x|X)?\]\s*/, (full, mark) => ((mark || '').trim() ? '☑ ' : '☐ '))
@@ -614,7 +647,7 @@ export function parseBlocks(text, options = {}) {
   const splitMode = ['items', 'merge', 'lines'].includes(options.splitMode)
     ? options.splitMode
     : 'auto'
-  const normalized = decodeEntities(String(text ?? ''))
+  const normalized = squeezeCjkSpaces(normalizeFullWidth(decodeEntities(String(text ?? ''))))
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
     .replace(/\s+$/, '')

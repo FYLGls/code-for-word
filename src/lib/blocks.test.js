@@ -474,6 +474,35 @@ describe('parseBlocks', () => {
   })
 
 
+  it('handles OCR full-width text with inter-character spaces', () => {
+    const src = [
+      '基 于 深 度 学 习 的 文 本 分 类 研 究',
+      '',
+      '１ 引言',
+      '',
+      '随 着 互 联 网 技 术 的 发 展 ， 文 本 数 据 增 长 。',
+      '',
+      '１．１ 研 究 背 景',
+      '',
+      '准 确 率 达 到 ９５ ． ２ ％ ， 效 果 显 著 。',
+      '',
+      '参 考 文 献',
+      '',
+      '〔 １ 〕 张 三 ． 文 本 分 类 〔 Ｊ 〕 ． 学 报 ， ２ ０ ２ ３ ．'
+    ].join('\n')
+    const blocks = renumberBlocks(parseBlocks(src), 'academic')
+    const shape = blocks.map((b) => `${b.kind}${b.number ? ':' + b.number : ''}`)
+    expect(shape).toEqual(['title', 'heading:1', 'paragraph', 'heading:1.1', 'paragraph', 'heading', 'ref'])
+    expect(blocks[0].text).toBe('基于深度学习的文本分类研究')
+    expect(blocks[2].text).toContain('随着互联网技术的发展')
+    expect(blocks[4].text).toContain('95.2%')
+    expect(blocks[6].text).toContain('[1] 张三')
+    // 正常排版空格不被清理
+    const normal = renumberBlocks(parseBlocks('第1章 绪论\n\n正文内容。'), 'thesis')
+    expect(normal[0].text).toBe('绪论')
+  })
+
+
   it('preserves original numbering in none scheme for legal docs', () => {
     const src = ['第一条 合同标的', '', '甲方应交付。', '', '1.1 交付地点', '', '乙方所在地。'].join('\n')
     const text = blocksToPlainText(renumberBlocks(parseBlocks(src), 'none'))
