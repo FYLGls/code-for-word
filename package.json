@@ -2,7 +2,7 @@
   "name": "codepaste",
   "version": "0.2.7",
   "private": false,
-  "description": "Code for Word / 码文 — paste VS Code–styled code into Microsoft Word via native RTF (Windows desktop).",
+  "description": "Code for Word / 码文 — paste highlighted code into Word, or set prose as a thesis. Opens in code mode.",
   "type": "module",
   "main": "electron/main.cjs",
   "bin": {

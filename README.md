@@ -6,7 +6,7 @@
   <img src="docs/demo.gif" alt="Code for Word demo" width="100%" />
 </p>
 
-Paste code or messy text into Word — as a syntax-highlighted code block, or reformat it into a clean academic/thesis document. Colors and Chinese text stay readable.
+Paste highlighted code into Word, with the frame and spacing you set. Switch to text mode when you want prose set like a thesis: Songti body, Heiti headings. The app opens in code mode.
 
 ## Use it
 
@@ -31,38 +31,25 @@ If Windows SmartScreen says the publisher is unknown, choose **More info → Run
 
 Closing the window hides the app to the system tray.
 
-## Two modes, one paste
+## Two modes
 
-**Auto**: paste anything and the app detects code vs. prose (weighted line voting — comments, brackets and operators vote code; CJK prose, sentence punctuation and markdown structure vote text). Override anytime with the **自动 / 代码 / 文本** tabs.
+The app opens in **Code**. Text mode and translation stay off until you turn them on.
 
 ### Code mode
 
-The original feature: syntax highlighting (highlight.js, auto-detect or pick a language), theme, font/size, line numbers, frame — copied to Word as RTF so colors survive.
+Syntax highlighting, type size, line numbers, page margins, code inset, frame, and optional underlines. The desktop app copies RTF so Word keeps the colors and the frame.
 
 ### Text / paper mode
 
-Turns messy text into a properly structured document:
+Choose **Text** to set prose like a thesis:
 
-- **Auto layering & numbering** — one of four schemes:
-  - `academic` 1 / 1.1 / 1.1.1 (GB/T 7713 style, default)
-  - `thesis` 第1章 / 1.1
-  - `official` 一、（一）1.（1）a.
-  - `none` keep the original numbering
-- **Auto itemization** — bullets, `1.`/`（1）` lists, checkboxes `[ ]`/`[x]` → ☐/☑, emoji bullets (✅ ❌ ➤ …)
-- **Mixed code + prose** — code inside a paper is kept as a highlighted, numbered `代码 N` block; paper structure is preserved
-- **Structure recognition** — title, abstract, headings, figure/table captions (`图 2-1`), numbered references with hanging indent, `$$…$$` formulas, algorithm blocks, sign-off (right-aligned)
-- **Tables** — Markdown pipe tables and Excel/TSV pastes become real Word tables
-- **OCR cleanup** — full-width `１２３％（）` normalized to half-width, stray inter-character spaces squeezed (tabs/TSV preserved)
-- **LaTeX leftovers** — `\textbf{}` → bold, `\textit{}` → italic, `\cite{}` stripped, `$x^2$` italic
-- **Typography** — 宋体 for CJK + Times New Roman for Latin (automatic per-script run splitting), heading font/size, body size, line spacing, first-line indent, alignment, bold/italic/underline
+- Body defaults to 宋体 12 pt, Times New Roman for Latin, 1.5 line spacing, 2-character first-line indent, justified
+- Headings use 黑体: 16 pt, 14 pt, then 12 pt
+- Numbering can be academic `1 / 1.1`, thesis chapters, official-document style, or left as written
+- Lists, captions, references, formulas, code blocks inside prose, and Markdown or Excel tables
+- Optional cleanup for OCR full-width characters, extra spaces, and some LaTeX markup
 
-### Translation
-
-- **Free** via MyMemory (no key) or **AI** via any OpenAI-compatible endpoint (base URL + model + key, stored locally)
-- Direction: auto / EN→中文 / 中文→EN; output: translation only / original + translation / original only
-- **Auto-translate** runs after paste (900 ms debounce); block-level cache retranslates only what changed
-
-Privacy: free translation sends the text to MyMemory; AI translation goes only to the endpoint you configure. Nothing else leaves the machine. A one-time notice is shown before the first translation.
+Translation stays off. When you enable it, text is sent only to the free engine or the endpoint you configure.
 
 ## Develop
 
