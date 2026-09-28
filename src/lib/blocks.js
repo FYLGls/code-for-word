@@ -620,6 +620,13 @@ function parseTextRegion(lines, splitMode = 'auto') {
       }
       continue
     }
+    // 列表型标记的完整句（句末标点收尾）是条目内容：
+    // 后面跟正文/代码时 nextIsContent 会否决上面的条目分支，这里兜底，
+    // 否则 "（2）xxx。" 会因为跟着代码块被当成大纲标题（1.1）
+    if (markerIsListType && ENDING_PUNCT.test(u.text)) {
+      blocks.push({ kind: 'item', text: u.text, level, raw: u.raw || u.text })
+      continue
+    }
     if (/[:：]$/.test(u.text) && nextIsSameMarker && !nextIsContent) {
       // 冒号收尾的同标记引导句 → 段落，保留原行文本
       blocks.push({ kind: 'paragraph', text: u.raw })

@@ -153,6 +153,23 @@ describe('parseBlocks', () => {
     expect(blocks[1].fenced).toBe(false)
   })
 
+  it('keeps sentence-ending list items as items when followed by code', () => {
+    const src = [
+      '1 研究背景',
+      '文本分类是自然语言处理的基础任务之一。',
+      '（1）传统方法依赖人工特征。',
+      '（2）深度方法端到端学习。',
+      '',
+      'def classify(text):',
+      '    return model.predict(text)'
+    ].join('\n')
+    const blocks = parseBlocks(src)
+    const kinds = blocks.map((b) => `${b.kind}:${b.text.slice(0, 4)}`)
+    // （2）后跟代码块，也不能升级为标题——句末标点收尾的列表行是条目
+    expect(kinds).not.toContain('heading:深度方法端')
+    expect(blocks.filter((b) => b.kind === 'item')).toHaveLength(2)
+  })
+
   it('parses figure/table captions and reference entries', () => {
     const src = [
       '实验结果见下图。',
