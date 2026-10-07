@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <script type="module" crossorigin src="/code-for-word/assets/index-CymNXzQJ.js"></script>
-  <link rel="stylesheet" crossorigin href="/code-for-word/assets/index-OHfvKryA.css">
+  <script type="module" crossorigin src="/code-for-word/assets/index-CMECe8ks.js"></script>
+  <link rel="stylesheet" crossorigin href="/code-for-word/assets/index-BiWzv6H-.css">
 </head>
 <body>
   <div class="ambient" aria-hidden="true">
@@ -43,9 +43,7 @@
         <div class="mode-switch" id="modeSwitch" role="group" aria-label="mode">
           <button type="button" class="mode-btn is-active" data-mode="code" data-i18n="modeCode">代码</button>
           <button type="button" class="mode-btn" data-mode="text" data-i18n="modeText">文本</button>
-          <button type="button" class="mode-btn" data-mode="auto" data-i18n="modeAuto">自动</button>
         </div>
-        <span class="detect-chip" id="detectChip" hidden></span>
       </div>
       <div class="toolbar-row" id="codeToolbar">
         <label class="field"><span data-i18n="langCode">语言</span>
@@ -204,20 +202,68 @@
       <section class="panel">
         <div class="panel-head">
           <strong id="sourceLabel" data-i18n="source">源代码</strong>
-          <span id="metaSource" class="meta">源代码</span>
+          <span class="panel-head-right source-head-tools">
+            <div class="source-find" role="search">
+              <input
+                type="search"
+                id="sourceFind"
+                class="source-find-input"
+                data-i18n-placeholder="sourceFindPlaceholder"
+                placeholder="搜索代码…"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <span id="sourceFindMeta" class="source-find-meta" aria-live="polite"></span>
+              <button type="button" class="source-find-btn" id="sourceFindPrev" data-i18n-aria="sourceFindPrev" aria-label="上一处" title="">↑</button>
+              <button type="button" class="source-find-btn" id="sourceFindNext" data-i18n-aria="sourceFindNext" aria-label="下一处" title="">↓</button>
+            </div>
+            <span id="metaSource" class="meta">源代码</span>
+          </span>
         </div>
         <textarea id="source" spellcheck="false" data-i18n-placeholder="placeholder" placeholder="在此粘贴代码…"></textarea>
       </section>
       <section class="panel preview-panel">
         <div class="panel-head">
           <strong data-i18n="preview">Word 预览</strong>
-          <span id="metaPreview" class="meta">预览</span>
+          <span class="panel-head-right">
+            <span class="preview-jump-hint" data-i18n="previewJumpHint">悬停高亮 · 双击跳到源码</span>
+            <span id="metaPreview" class="meta">预览</span>
+          </span>
         </div>
         <div class="preview-stage">
+          <button type="button" class="preview-expand" id="previewExpand" data-i18n-aria="previewExpand" aria-label="Expand preview" title="">
+            <span class="preview-expand-glyph" aria-hidden="true">
+              <svg class="preview-expand-icon" width="15" height="15" viewBox="0 0 16 16" focusable="false">
+                <path fill="currentColor" d="M2.5 2.5h4.2v1.4H3.9v2.8H2.5V2.5zm6.8 0h4.2v4.2h-1.4V3.9H9.3V2.5zM2.5 9.3h1.4v2.8h2.8v1.4H2.5V9.3zm9.6 0h1.4v4.2H9.3v-1.4h2.8V9.3z"/>
+              </svg>
+            </span>
+            <span class="preview-expand-label" data-i18n="previewExpandShort">放大</span>
+          </button>
           <div class="preview-wrap" id="preview" data-mode="light"></div>
         </div>
       </section>
     </main>
+
+    <dialog class="preview-lightbox" id="previewLightbox" aria-modal="true">
+      <div class="preview-lightbox-chrome">
+        <button type="button" class="preview-lightbox-close" id="previewLightboxClose" data-i18n-aria="previewClose" aria-label="Close">
+          <span aria-hidden="true">×</span>
+        </button>
+        <div class="preview-lightbox-scroll" id="previewLightboxBody"></div>
+        <p class="preview-jump-hint preview-jump-hint--lightbox" data-i18n="previewJumpHint">悬停高亮 · 双击跳到源码</p>
+      </div>
+    </dialog>
+
+    <dialog class="jump-confirm" id="jumpConfirm" aria-modal="true">
+      <form method="dialog" class="jump-confirm-card">
+        <p class="jump-confirm-title" id="jumpConfirmTitle"></p>
+        <p class="jump-confirm-body" id="jumpConfirmBody" data-i18n="jumpConfirmBody">Jump to this line in the source editor?</p>
+        <div class="jump-confirm-actions">
+          <button type="submit" value="cancel" class="btn ghost" data-i18n="jumpConfirmNo">Cancel</button>
+          <button type="submit" value="ok" class="btn primary" data-i18n="jumpConfirmYes">Go to source</button>
+        </div>
+      </form>
+    </dialog>
 
     <footer class="statusbar enter">
       <p class="status" id="status" role="status"></p>
